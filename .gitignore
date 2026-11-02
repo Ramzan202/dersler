@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/*.db
+data/*.db-*
+exports/*
+!exports/.gitkeep
+backups/*
+!backups/.gitkeep
+.req_hash
