@@ -104,6 +104,10 @@ class MainWindow(ctk.CTk):
 
     # ------------------------------------------------------------------ navigation
     def show_page(self, key: str, run: bool = False):
+        settings_page = self.pages.get("settings")
+        if self.current == "settings" and key != "settings" and settings_page is not None:
+            if not settings_page.autosave():
+                return
         page = self.pages[key]
         for k, b in self.nav.items():
             b.configure(fg_color=("gray75", "gray25") if k == key else "transparent")
@@ -142,6 +146,8 @@ class MainWindow(ctk.CTk):
         show_error(self, f"Beklenmeyen bir hata oluştu:\n{exc}\n\nVerileriniz kaydedildi.")
 
     def on_close(self):
+        if self.current == "settings" and not self.pages["settings"].autosave():
+            return
         try:
             self.db.close()
         finally:

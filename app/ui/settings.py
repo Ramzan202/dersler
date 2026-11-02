@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -34,8 +35,14 @@ class SettingsPage(ctk.CTkScrollableFrame):
         super().__init__(master, fg_color="transparent")
         self.app = app
         g = guarded(self)
-        ctk.CTkLabel(self, text="Ayarlar ve Veri İşlemleri", font=ctk.CTkFont(size=22, weight="bold")).pack(
-            anchor="w", padx=16, pady=(16, 6))
+        top = ctk.CTkFrame(self, fg_color="transparent")
+        top.pack(fill="x", padx=16, pady=(16, 6))
+        ctk.CTkLabel(top, text="Ayarlar ve Veri İşlemleri", font=ctk.CTkFont(size=22, weight="bold")).pack(
+            side="left")
+        ctk.CTkButton(top, text="💾 Ayarları kaydet", height=36, fg_color="#2E7D32",
+                      command=g(self.save)).pack(side="right")
+        ctk.CTkLabel(self, text="Değişiklikler başka bölüme geçerken veya program kapanırken otomatik kaydedilir.",
+                     text_color="gray").pack(anchor="w", padx=16)
 
         gen = self.section("Okul ve ders saatleri")
         self.school = self.entry(gen, 0, "Okul adı", width=380)
@@ -80,8 +87,6 @@ class SettingsPage(ctk.CTkScrollableFrame):
         ctk.CTkCheckBox(look, text="Her gün ilk açılışta otomatik yedek al", variable=self.auto_backup).grid(
             row=2, column=0, columnspan=2, sticky="w", padx=10, pady=4)
 
-        ctk.CTkButton(self, text="💾 Ayarları kaydet", height=36, command=g(self.save)).pack(anchor="w", padx=16,
-                                                                                           pady=8)
 
         data = self.section("Veri işlemleri")
         buttons = [
@@ -137,39 +142,75 @@ class SettingsPage(ctk.CTkScrollableFrame):
         self.scale_var.set(next((k for k, v in SCALES.items() if abs(v - float(s["ui_scaling"])) < 0.01), "%100"))
         self.theme_var.set(next((k for k, v in THEMES.items() if v == s["appearance"]), "Açık"))
         self.auto_backup.set(1 if s.get("auto_backup", True) else 0)
+        self._snapshot = self.collect()
+        self._loaded = True
         backups = list_backups()
         self.backup_info.configure(text=f"Yedek klasörü: {config.BACKUP_DIR}  ·  {len(backups)} yedek"
                                         + (f"  ·  son: {backups[0].name}" if backups else ""))
 
-    def save(self):
+    def collect(self) -> dict:
+        """Read and validate all fields; raises ValueError with a readable message."""
         def as_int(var, label, lo, hi):
             try:
-                v = int(var.get())
+                v = int(str(var.get()).strip())
             except ValueError:
                 raise ValueError(f"'{label}' bir tam sayı olmalıdır.")
             if not lo <= v <= hi:
                 raise ValueError(f"'{label}' {lo} ile {hi} arasında olmalıdır.")
             return v
-        db = self.app.db
-        periods = as_int(self.periods, "Günlük ders saati", 1, 14)
+        periods = as_int(self.periods, "Günlük ders saati sayısı", 1, 14)
         times = [t.strip() for t in self.times.get("1.0", "end").splitlines()]
-        old = db.get_setting("period_times")
-        times = (times + old[len(times):])[:max(periods, len(old))]
-        db.set_setting("school_name", self.school.get().strip() or config.DEFAULT_SETTINGS["school_name"])
-        db.set_setting("academic_year", self.year.get().strip())
-        db.set_setting("days_count", int(self.days_var.get()))
-        db.set_setting("periods_per_day", periods)
-        db.set_setting("period_times", times)
-        db.set_setting("solver_time_limit", as_int(self.limit, "Süre sınırı", 5, 7200))
-        db.set_setting("solver_workers", as_int(self.workers, "Paralel iş parçacığı", 1, 64))
-        db.set_setting("hard_per_day_limit", as_int(self.hard_limit, "Günlük zor ders", 1, 14))
-        db.set_setting("weights", {k: int(v.get()) for k, (v, _) in self.weight_vars.items()})
-        db.set_setting("ui_scaling", SCALES[self.scale_var.get()])
-        db.set_setting("appearance", THEMES[self.theme_var.get()])
-        db.set_setting("auto_backup", bool(self.auto_backup.get()))
+        while times and not times[-1]:
+            times.pop()
+        old = self.app.db.get_setting("period_times") or []
+        times = (times + old[len(times):])[:max(periods, len(times))]
+        return {
+            "school_name": self.school.get().strip() or config.DEFAULT_SETTINGS["school_name"],
+            "academic_year": self.year.get().strip(),
+            "days_count": int(self.days_var.get() or 5),
+            "periods_per_day": periods,
+            "period_times": times,
+            "solver_time_limit": as_int(self.limit, "Süre sınırı", 5, 7200),
+            "solver_workers": as_int(self.workers, "Paralel iş parçacığı", 1, 64),
+            "hard_per_day_limit": as_int(self.hard_limit, "Günlük en fazla zor ders", 1, 14),
+            "weights": {k: int(v.get()) for k, (v, _) in self.weight_vars.items()},
+            "ui_scaling": SCALES.get(self.scale_var.get(), 1.0),
+            "appearance": THEMES.get(self.theme_var.get(), "light"),
+            "auto_backup": bool(self.auto_backup.get()),
+        }
+
+    def has_changes(self) -> bool:
+        try:
+            return self.collect() != getattr(self, "_snapshot", None)
+        except ValueError:
+            return True
+
+    def save(self, silent: bool = False):
+        values = self.collect()
+        db = self.app.db
+        with db.transaction() as conn:
+            for key, value in values.items():
+                conn.execute("INSERT INTO settings(key, value) VALUES (?, ?) "
+                             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                             (key, json.dumps(value, ensure_ascii=False)))
+        self._snapshot = values
         self.app.apply_appearance()
         self.app.data_changed()
-        show_info(self, "Ayarlar kaydedildi.")
+        self.app.set_status("✔ Ayarlar kaydedildi" + (" (otomatik)" if silent else "") + ".")
+        if not silent:
+            show_info(self, "Ayarlar kaydedildi.")
+
+    def autosave(self) -> bool:
+        """Save pending changes silently. Returns False (and shows the error) if a field is invalid."""
+        if not getattr(self, "_loaded", False) or not self.has_changes():
+            return True
+        try:
+            self.save(silent=True)
+            return True
+        except ValueError as exc:
+            from app.ui.widgets import show_error
+            show_error(self, f"Ayarlar kaydedilemedi: {exc}\nLütfen değeri düzeltin.")
+            return False
 
     def import_excel(self):
         path = filedialog.askopenfilename(parent=self, filetypes=[("Excel", "*.xlsx *.xlsm")])

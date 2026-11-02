@@ -67,3 +67,35 @@ def test_main_window_end_to_end(tmp_path, monkeypatch):
         win.update()
     finally:
         win.destroy()
+
+
+def test_settings_autosave(tmp_path, monkeypatch):
+    pytest.importorskip("tkinter")
+    from app.database.database import Database
+    from app.ui import settings as settings_ui
+    from app.ui import widgets
+    from app.ui.main_window import MainWindow
+
+    errors = []
+    monkeypatch.setattr(widgets, "show_error", lambda *a, **k: errors.append(a[1]))
+    monkeypatch.setattr(settings_ui, "show_info", lambda *a, **k: None)
+    path = tmp_path / "s.db"
+    db = Database(path)
+    win = MainWindow(db)
+    win.show_page("settings")
+    page = win.pages["settings"]
+    page.periods.set("9")
+    page.school.set("Deneme MTAL")
+    win.show_page("classes")
+    assert db.get_setting("periods_per_day") == 9 and win.current == "classes"
+    win.show_page("settings")
+    page.limit.set("abc")
+    page.year.set("2030-2031")
+    win.show_page("dashboard")
+    assert win.current == "settings" and errors
+    assert db.get_setting("academic_year") != "2030-2031"
+    page.limit.set("100")
+    win.on_close()
+    again = Database(path).all_settings()
+    assert again["solver_time_limit"] == 100 and again["academic_year"] == "2030-2031"
+    assert again["school_name"] == "Deneme MTAL" and again["periods_per_day"] == 9
