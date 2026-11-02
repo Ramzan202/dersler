@@ -78,6 +78,14 @@ class MainWindow(ctk.CTk):
         self.dirty = set()
         self.show_page("dashboard")
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.after(600, self._check_solver)
+
+    def _check_solver(self):
+        from app.ui.solve_dialog import ORTOOLS_HELP, ortools_available
+        error = ortools_available()
+        if error:
+            self.set_status("⚠ Optimizasyon kütüphanesi yüklenemedi – otomatik dağıtım kullanılamaz.")
+            show_error(self, ORTOOLS_HELP + f"\n\nTeknik ayrıntı: {error}", title="Uyarı")
 
     # ------------------------------------------------------------------ settings helpers
     def reload_settings(self):

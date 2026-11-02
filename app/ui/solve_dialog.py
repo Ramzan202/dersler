@@ -7,10 +7,29 @@ from datetime import datetime
 import customtkinter as ctk
 
 from app.core.problem import build_problem
-from app.core.scheduler import Scheduler
 from app.core.validator import validate
 from app.services.timetable_service import TimetableService
 from app.ui.widgets import DataTable, ask_yes_no, show_error
+
+
+ORTOOLS_HELP = (
+    "Optimizasyon kütüphanesi (Google OR-Tools) yüklenemedi.\n\n"
+    "Çözüm:\n"
+    "1. Microsoft Visual C++ Redistributable (x64) kurun:\n"
+    "   https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
+    "2. Bilgisayarı yeniden başlatıp run.bat dosyasını tekrar çalıştırın.\n"
+    "3. Sorun sürerse Python 3.12 kurun, 'venv' klasörünü silin ve run.bat'ı yeniden çalıştırın.\n\n"
+    "Verileri girmek ve düzenlemek bu sırada da mümkündür."
+)
+
+
+def ortools_available() -> str | None:
+    """Return None if OR-Tools loads, otherwise the error text."""
+    try:
+        from ortools.sat.python import cp_model  # noqa: F401
+        return None
+    except (ImportError, OSError) as exc:
+        return str(exc)
 
 
 class SolveDialog(ctk.CTkToplevel):
@@ -24,7 +43,7 @@ class SolveDialog(ctk.CTkToplevel):
         self.minsize(640, 520)
         self.result_timetable_id = None
         self.queue: queue.Queue = queue.Queue()
-        self.scheduler: Scheduler | None = None
+        self.scheduler = None
         self.thread: threading.Thread | None = None
         self.started = 0.0
         settings = app.db.all_settings()
@@ -85,6 +104,10 @@ class SolveDialog(ctk.CTkToplevel):
         self.log.see("end")
 
     def start(self):
+        try:
+            from app.core.scheduler import Scheduler
+        except (ImportError, OSError) as exc:
+            return show_error(self, ORTOOLS_HELP + f"\n\nTeknik ayrıntı: {exc}")
         try:
             limit = max(5, int(self.time_var.get()))
         except ValueError:

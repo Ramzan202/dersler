@@ -38,6 +38,30 @@ if errorlevel 1 goto :no_tk
 rem ---- 3. Bagimliliklar (yalnizca eksikse veya requirements.txt degistiyse) ---
 "%VPY%" scripts\check_requirements.py >nul 2>nul
 if not errorlevel 1 goto :deps_ready
+
+rem ---- 3b. OR-Tools gercekten yukleniyor mu? (Visual C++ Redistributable gerekir) ----
+"%VPY%" -c "from ortools.sat.python import cp_model" >nul 2>nul
+if not errorlevel 1 goto :solver_ok
+echo.
+echo [UYARI] Optimizasyon kutuphanesi (OR-Tools) yuklenemedi.
+echo         Genellikle "Microsoft Visual C++ Redistributable" eksik oldugunda olur.
+choice /C EH /M "Simdi indirilip kurulsun mu? (E=Evet, H=Hayir)"
+if errorlevel 2 goto :solver_skip
+echo Indiriliyor: https://aka.ms/vs/17/release/vc_redist.x64.exe
+curl -L -s -o "%TEMP%\vc_redist.x64.exe" https://aka.ms/vs/17/release/vc_redist.x64.exe
+if errorlevel 1 goto :vc_failed
+echo Kurulum baslatiliyor (yonetici izni istenebilir)...
+"%TEMP%\vc_redist.x64.exe" /install /passive /norestart
+"%VPY%" -c "from ortools.sat.python import cp_model" >nul 2>nul
+if not errorlevel 1 goto :solver_ok
+:vc_failed
+echo.
+echo [UYARI] Sorun devam ediyor. Bilgisayari yeniden baslatip run.bat'i tekrar calistirin.
+echo         Yine olmazsa Python 3.12 kurun, "venv" klasorunu silin ve run.bat'i yeniden calistirin.
+echo         Program yine de acilacak; veriler girilebilir, otomatik dagitim calismaz.
+pause
+:solver_skip
+:solver_ok
 echo [2/3] Gerekli kutuphaneler yukleniyor. Ilk kurulumda internet gerekir, birkac dakika surebilir...
 "%VPY%" -m pip install --upgrade pip --disable-pip-version-check -q
 "%VPY%" -m pip install -r requirements.txt --disable-pip-version-check
