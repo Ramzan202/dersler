@@ -143,7 +143,10 @@ class SettingsPage(ctk.CTkScrollableFrame):
         self.scale_var.set(next((k for k, v in SCALES.items() if abs(v - float(s["ui_scaling"])) < 0.01), "%100"))
         self.theme_var.set(next((k for k, v in THEMES.items() if v == s["appearance"]), "Açık"))
         self.auto_backup.set(1 if s.get("auto_backup", True) else 0)
-        self._snapshot = self.collect()
+        try:
+            self._snapshot = self.collect()
+        except ValueError:
+            self._snapshot = None
         self._loaded = True
         backups = list_backups()
         self.backup_info.configure(text=f"Yedek klasörü: {config.BACKUP_DIR}  ·  {len(backups)} yedek"
@@ -159,7 +162,7 @@ class SettingsPage(ctk.CTkScrollableFrame):
             if not lo <= v <= hi:
                 raise ValueError(f"'{label}' {lo} ile {hi} arasında olmalıdır.")
             return v
-        periods = as_int(self.periods, "Günlük ders saati sayısı", 1, 14)
+        periods = as_int(self.periods, "Günlük ders saati sayısı", 1, 20)
         times = [t.strip() for t in self.times.get("1.0", "end").splitlines()]
         while times and not times[-1]:
             times.pop()
@@ -173,7 +176,7 @@ class SettingsPage(ctk.CTkScrollableFrame):
             "period_times": times,
             "solver_time_limit": as_int(self.limit, "Süre sınırı", 5, 7200),
             "solver_workers": as_int(self.workers, "Paralel iş parçacığı", 1, 64),
-            "hard_per_day_limit": as_int(self.hard_limit, "Günlük en fazla zor ders", 1, 14),
+            "hard_per_day_limit": as_int(self.hard_limit, "Günlük en fazla zor ders", 1, 20),
             "weights": {k: int(v.get()) for k, (v, _) in self.weight_vars.items()},
             "ui_scaling": SCALES.get(self.scale_var.get(), 1.0),
             "appearance": THEMES.get(self.theme_var.get(), "light"),

@@ -1,0 +1,14 @@
+
+[2026-11-02 13:46:09]
+Traceback (most recent call last):
+  File "/home/user/dersler/app/ui/main_window.py", line 118, in show_page
+    page.refresh()
+  File "/home/user/dersler/app/ui/settings.py", line 146, in refresh
+    self._snapshot = self.collect()
+                     ^^^^^^^^^^^^^^
+  File "/home/user/dersler/app/ui/settings.py", line 162, in collect
+    periods = as_int(self.periods, "Günlük ders saati sayısı", 1, 14)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/dersler/app/ui/settings.py", line 160, in as_int
+    raise ValueError(f"'{label}' {lo} ile {hi} arasında olmalıdır.")
+ValueError: 'Günlük ders saati sayısı' 1 ile 14 arasında olmalıdır.
