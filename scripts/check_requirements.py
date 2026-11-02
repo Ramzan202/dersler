@@ -9,6 +9,8 @@ ROOT = Path(__file__).resolve().parent.parent
 REQ = ROOT / "requirements.txt"
 STAMP = Path(sys.prefix) / ".req_hash"
 MODULES = ["ortools", "customtkinter", "openpyxl", "matplotlib", "reportlab", "tkinter"]
+if sys.platform.startswith("win"):
+    MODULES.append("msvc_runtime")
 
 
 def digest() -> str:

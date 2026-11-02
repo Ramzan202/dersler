@@ -15,6 +15,11 @@ def _log_error(text: str):
 
 def main():
     try:
+        from app.utils.native_libs import prepare_native_libs
+        prepare_native_libs()
+    except Exception:  # noqa: BLE001
+        traceback.print_exc()
+    try:
         from app import config
         from app.database.database import Database
         from app.database.seed import load_demo_data

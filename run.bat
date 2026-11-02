@@ -40,7 +40,7 @@ rem ---- 3. Bagimliliklar (yalnizca eksikse veya requirements.txt degistiyse) --
 if not errorlevel 1 goto :deps_ready
 
 rem ---- 3b. OR-Tools gercekten yukleniyor mu? (Visual C++ Redistributable gerekir) ----
-"%VPY%" -c "from ortools.sat.python import cp_model" >nul 2>nul
+"%VPY%" -m app.utils.native_libs >nul 2>nul
 if not errorlevel 1 goto :solver_ok
 echo.
 echo [UYARI] Optimizasyon kutuphanesi (OR-Tools) yuklenemedi.
@@ -52,7 +52,7 @@ curl -L -s -o "%TEMP%\vc_redist.x64.exe" https://aka.ms/vs/17/release/vc_redist.
 if errorlevel 1 goto :vc_failed
 echo Kurulum baslatiliyor (yonetici izni istenebilir)...
 "%TEMP%\vc_redist.x64.exe" /install /passive /norestart
-"%VPY%" -c "from ortools.sat.python import cp_model" >nul 2>nul
+"%VPY%" -m app.utils.native_libs >nul 2>nul
 if not errorlevel 1 goto :solver_ok
 :vc_failed
 echo.

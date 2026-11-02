@@ -15,21 +15,19 @@ from app.ui.widgets import DataTable, ask_yes_no, show_error
 ORTOOLS_HELP = (
     "Optimizasyon kütüphanesi (Google OR-Tools) yüklenemedi.\n\n"
     "Çözüm:\n"
-    "1. Microsoft Visual C++ Redistributable (x64) kurun:\n"
+    "1. Programı kapatıp run.bat dosyasını yeniden çalıştırın; eksik Visual C++ bileşenleri (msvc-runtime) "
+    "otomatik olarak kurulur.\n"
+    "2. Olmazsa Microsoft Visual C++ Redistributable (x64) kurun:\n"
     "   https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
-    "2. Bilgisayarı yeniden başlatıp run.bat dosyasını tekrar çalıştırın.\n"
-    "3. Sorun sürerse Python 3.12 kurun, 'venv' klasörünü silin ve run.bat'ı yeniden çalıştırın.\n\n"
+    "3. Sorun sürerse 'venv' klasörünü silip run.bat dosyasını yeniden çalıştırın.\n\n"
     "Verileri girmek ve düzenlemek bu sırada da mümkündür."
 )
 
 
 def ortools_available() -> str | None:
     """Return None if OR-Tools loads, otherwise the error text."""
-    try:
-        from ortools.sat.python import cp_model  # noqa: F401
-        return None
-    except (ImportError, OSError) as exc:
-        return str(exc)
+    from app.utils.native_libs import ortools_error
+    return ortools_error()
 
 
 class SolveDialog(ctk.CTkToplevel):
@@ -105,6 +103,8 @@ class SolveDialog(ctk.CTkToplevel):
 
     def start(self):
         try:
+            from app.utils.native_libs import prepare_native_libs
+            prepare_native_libs()
             from app.core.scheduler import Scheduler
         except (ImportError, OSError) as exc:
             return show_error(self, ORTOOLS_HELP + f"\n\nTeknik ayrıntı: {exc}")
