@@ -17,6 +17,8 @@ class RoomService(AvailabilityMixin, CrudService):
         super()._validate(obj)
         if obj.capacity < 0:
             raise ValueError("Kapasite negatif olamaz.")
+        if obj.max_parallel < 1:
+            raise ValueError("'Aynı anda en fazla ders' en az 1 olmalıdır.")
 
     def _save_relations(self, conn, obj: Room):
         conn.execute("DELETE FROM room_subjects WHERE room_id = ?", (obj.id,))

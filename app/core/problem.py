@@ -1,7 +1,8 @@
+from collections import defaultdict
 from dataclasses import dataclass, field
 
 from app.config import ALL_DAY_NAMES
-from app.core.splits import Pattern, candidate_patterns, choose_preferred, format_pattern
+from app.core.splits import Pattern, candidate_patterns, choose_preferred, format_pattern, parse_pattern
 from app.database.database import Database
 from app.database.models import Entry, Room, SchoolClass, Subject, Teacher, parse_int_list
 from app.services.class_service import ClassService
@@ -28,6 +29,14 @@ class Lesson:
     physical: bool
     preferred_time: str
     fixed_teacher: int | None = None
+    class_ids: list[int] = field(default_factory=list)
+    team: bool = False
+    room_mode: str = "any"
+    external: bool = False
+
+    def __post_init__(self):
+        if not self.class_ids:
+            self.class_ids = [self.class_id]
 
     @property
     def block_lengths(self) -> list[int]:
@@ -44,6 +53,7 @@ class ClassData:
     max_daily: int
     student_count: int
     home_room_id: int | None
+    parent_id: int | None = None
 
 
 @dataclass
@@ -67,6 +77,7 @@ class RoomData:
     room_type: str
     capacity: int
     unavailable: set[Slot]
+    max_parallel: int = 1
 
 
 @dataclass
@@ -90,10 +101,11 @@ class Problem:
         return [(d, p) for d in range(self.num_days) for p in range(self.periods)]
 
     def lesson_label(self, lesson: Lesson) -> str:
-        return f"{self.classes[lesson.class_id].name} – {self.subjects[lesson.subject_id].name}"
+        names = "+".join(self.classes[c].name for c in lesson.class_ids if c in self.classes)
+        return f"{names} – {self.subjects[lesson.subject_id].name}"
 
     def lesson_by_key(self) -> dict[tuple[int, int], Lesson]:
-        return {(l.class_id, l.subject_id): l for l in self.lessons}
+        return {(c, l.subject_id): l for l in self.lessons for c in l.class_ids}
 
     def slot_label(self, slot: Slot) -> str:
         d, p = slot
@@ -145,31 +157,70 @@ def build_problem(db: Database) -> Problem:
 
     classes: dict[int, ClassData] = {}
     lessons: list[Lesson] = []
+    links: dict[tuple[int, str], list[Lesson]] = defaultdict(list)
     issues: list[str] = []
     for cls in class_svc.list():
         days = [d for d in parse_int_list(cls.available_days) if d < days_count]
         blocked = class_svc.get_unavailable(cls.id)
         available = {(d, p) for (d, p) in all_slots if d in days and (d, p) not in blocked}
         classes[cls.id] = ClassData(cls.id, cls.name, cls.grade, days, available,
-                                    cls.max_daily if cls.max_daily else periods, cls.student_count, cls.home_room_id)
+                                    cls.max_daily if cls.max_daily else periods, cls.student_count, cls.home_room_id,
+                                    cls.parent_id)
         for cl in class_svc.lessons(cls.id):
             subject = subjects[cl.subject_id]
-            if cl.fixed_teacher_id:
-                cands = [cl.fixed_teacher_id]
+            external = bool(subject.external)
+            team = bool(cl.team) and not external
+            if external:
+                cands = []
+            elif cl.team:
+                cands = list(cl.team)
             else:
                 cands = qualified_teachers(subject, teachers)
-            room_cands, room_required = suitable_rooms(subject, cls, rooms, room_subject_ids)
+            if cl.rooms:
+                room_cands, room_required, room_mode = list(cl.rooms), True, cl.room_mode or "any"
+            elif external:
+                room_cands, room_required, room_mode = [], False, "any"
+            else:
+                room_cands, room_required = suitable_rooms(subject, cls, rooms, room_subject_ids)
+                room_mode = "any"
             max_parts = len(days) if not subject.allow_same_day else 99
             patterns = candidate_patterns(cl.hours, subject.min_block, subject.max_block, subject.allowed_splits,
                                           subject.forbidden_splits, max_parts)
-            preferred = choose_preferred(cl.hours, patterns, subject.preferred_split, subject.min_block,
-                                         subject.max_block)
+            preferred_text = subject.preferred_split
+            if cl.split:
+                try:
+                    own = parse_pattern(cl.split)
+                except ValueError:
+                    own = None
+                if own and sum(own) == cl.hours:
+                    if own not in patterns:
+                        patterns.append(own)
+                    preferred_text = cl.split
+            preferred = choose_preferred(cl.hours, patterns, preferred_text, subject.min_block, subject.max_block)
             lessons.append(Lesson(
                 index=len(lessons), class_id=cls.id, subject_id=subject.id, hours=cl.hours,
                 teacher_candidates=cands, room_candidates=room_cands, room_required=room_required,
-                patterns=patterns, preferred_pattern=preferred, allow_same_day=bool(subject.allow_same_day),
+                patterns=patterns, preferred_pattern=preferred,
+                allow_same_day=bool(subject.allow_same_day) or (preferred is not None and len(preferred) > len(days)),
                 difficulty=int(subject.difficulty or 0), physical=bool(subject.physical),
-                preferred_time=subject.preferred_time or "any", fixed_teacher=cl.fixed_teacher_id))
+                preferred_time=subject.preferred_time or "any", fixed_teacher=cl.fixed_teacher_id,
+                team=team, room_mode=room_mode, external=external))
+            if cl.link:
+                links[(subject.id, cl.link)].append(lessons[-1])
+
+    for group in links.values():
+        if len(group) < 2:
+            continue
+        head = group[0]
+        for other in group[1:]:
+            head.class_ids.extend(c for c in other.class_ids if c not in head.class_ids)
+            head.room_candidates.extend(r for r in other.room_candidates if r not in head.room_candidates)
+            if other.room_mode == "all":
+                head.room_mode = "all"
+            head.teacher_candidates.extend(t for t in other.teacher_candidates if t not in head.teacher_candidates)
+            lessons.remove(other)
+    for i, lesson in enumerate(lessons):
+        lesson.index = i
 
     teacher_data = {
         t.id: TeacherData(t.id, t.name, t.brans or "", t.max_daily, t.max_weekly, t.min_weekly, t.max_consecutive,
@@ -178,7 +229,8 @@ def build_problem(db: Database) -> Problem:
         for t in teachers
     }
     room_data = {r.id: RoomData(r.id, r.name, r.room_type, r.capacity,
-                                {s for s in room_svc.get_unavailable(r.id) if s in all_slots}) for r in rooms}
+                                {s for s in room_svc.get_unavailable(r.id) if s in all_slots},
+                                max(1, int(r.max_parallel or 1))) for r in rooms}
     return Problem(day_names, periods, lessons, classes, teacher_data, room_data, subjects,
                    dict(settings["weights"]), int(settings.get("hard_per_day_limit", 4)), issues)
 

@@ -34,7 +34,7 @@ class SubjectsPage(EntityPage):
                 split += f" (tercih {s.preferred_split})"
             room = (s.room_type or "Sınıf dersliği") + (" (zorunlu)" if s.room_required else "")
             kind = ", ".join(x for x, f in (("Mesleki", s.vocational), ("Seçmeli", s.elective),
-                                            ("Fiziksel", s.physical)) if f) or "Ortak"
+                                            ("Fiziksel", s.physical), ("İşletmede", s.external)) if f) or "Ortak"
             tag = "error" if n_teachers == 0 else ""
             rows.append((s.id, (s.name, s.short_name, s.default_hours, s.brans or "—",
                                 DIFFICULTY_LABELS.get(s.difficulty, ""), PREFERRED_TIME_LABELS.get(s.preferred_time, ""),
@@ -80,6 +80,8 @@ class SubjectsPage(EntityPage):
                  help="Kapalıysa her gün en fazla bir blok olur."),
             dict(key="vocational", label="Mesleki ders", kind="check", value=s.vocational),
             dict(key="elective", label="Seçmeli ders", kind="check", value=s.elective),
+            dict(key="external", label="Okul dışında (İşletmede Mesleki Eğitim)", kind="check", value=s.external,
+                 help="Öğretmen ve derslik gerekmez; sınıfın bu saatleri okulda dolu sayılır."),
             dict(key="color", label="Renk (#RRGGBB)", value=s.color, help="Boş = otomatik"),
         ]
         vals = FormDialog(self, title, fields, width=760, height=720).show()

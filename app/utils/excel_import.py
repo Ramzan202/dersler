@@ -17,14 +17,15 @@ SHEETS = {
     "Dersler": ["Ad", "Kısa Ad", "Varsayılan Saat", "Sınıf Düzeyi", "Alan", "Dal", "Branş", "Zorluk (0-2)",
                 "Fiziksel Etkinlik", "Tercih Edilen Zaman", "Derslik Türü", "Derslik Zorunlu", "En Küçük Blok",
                 "En Büyük Blok", "İzin Verilen Bölünmeler", "Yasaklı Bölünmeler", "Tercih Edilen Bölünme",
-                "Aynı Gün Birden Fazla Blok", "Seçmeli", "Mesleki", "Renk"],
-    "Derslikler": ["Ad", "Tür", "Kapasite", "Donanım", "Alan", "Uygun Dersler", "Notlar"],
+                "Aynı Gün Birden Fazla Blok", "Seçmeli", "Mesleki", "Renk", "Okul Dışında"],
+    "Derslikler": ["Ad", "Tür", "Kapasite", "Donanım", "Alan", "Uygun Dersler", "Notlar", "Aynı Anda En Fazla"],
     "Öğretmenler": ["Ad Soyad", "Branş", "Günlük En Fazla", "Haftalık En Fazla", "Haftalık En Az",
                     "Art Arda En Fazla", "Tercih Edilen Günler", "Dersler", "Notlar"],
     "Öğretim Planları": ["Plan", "Sınıf Düzeyi", "Alan", "Dal", "Program", "Ders", "Saat"],
     "Sınıflar": ["Ad", "Sınıf Düzeyi", "Alan", "Dal", "Program", "Öğretim Planı", "Sınıf Dersliği",
-                 "Öğrenci Sayısı", "Haftalık Saat", "Günlük En Fazla", "Okul Günleri", "Notlar"],
-    "Sınıf Ek Dersleri": ["Sınıf", "Ders", "Saat", "Sabit Öğretmen"],
+                 "Öğrenci Sayısı", "Haftalık Saat", "Günlük En Fazla", "Okul Günleri", "Notlar", "Ana Sınıf"],
+    "Sınıf Ek Dersleri": ["Sınıf", "Ders", "Saat", "Sabit Öğretmen", "Öğretmenler (ekip)", "Derslikler",
+                          "Derslik Kullanımı", "Birleştirme", "Bölünme"],
     "Müsaitlik": ["Tür", "Ad", "Gün", "Kapalı Saatler"],
 }
 
@@ -174,6 +175,7 @@ def import_workbook(db: Database, path: Path | str) -> ImportReport:
         s.elective = _b(r.get("Seçmeli"))
         s.vocational = _b(r.get("Mesleki"))
         s.color = _s(r.get("Renk"))
+        s.external = _b(r.get("Okul Dışında"))
         subj_svc.save(s)
 
     def room_row(r):
@@ -182,6 +184,7 @@ def import_workbook(db: Database, path: Path | str) -> ImportReport:
         room.room_type = _s(r.get("Tür")) or "Derslik"
         room.capacity = _i(r.get("Kapasite"), 0)
         room.equipment, room.alan, room.notes = _s(r.get("Donanım")), _s(r.get("Alan")), _s(r.get("Notlar"))
+        room.max_parallel = max(1, _i(r.get("Aynı Anda En Fazla"), 1))
         names = [x for x in _s(r.get("Uygun Dersler")).split(";") if x.strip()]
         room.subject_ids = [subject_id(n) for n in names]
         room_svc.save(room)
@@ -236,6 +239,7 @@ def import_workbook(db: Database, path: Path | str) -> ImportReport:
         c.available_days = format_int_list(days or range(int(db.get_setting("days_count"))))
         c.notes = _s(r.get("Notlar"))
         class_svc.save(c)
+        parents.append((c.id, _s(r.get("Ana Sınıf"))))
 
     def extra_row(r):
         c = class_svc.get_by_name(_s(r.get("Sınıf")))
@@ -251,6 +255,25 @@ def import_workbook(db: Database, path: Path | str) -> ImportReport:
             if t is None:
                 raise ValueError(f"öğretmen bulunamadı: '{teacher}'")
             class_svc.set_fixed_teacher(c.id, sid, t.id)
+        team_names = [x.strip() for x in _s(r.get("Öğretmenler (ekip)")).split(";") if x.strip()]
+        room_names = [x.strip() for x in _s(r.get("Derslikler")).split(";") if x.strip()]
+        mode_text = _tr_lower(_s(r.get("Derslik Kullanımı")))
+        link, split = _s(r.get("Birleştirme")), _s(r.get("Bölünme"))
+        if team_names or room_names or link or split or mode_text:
+            team = []
+            for n in team_names:
+                t = teacher_svc.get_by_name(n)
+                if t is None:
+                    raise ValueError(f"öğretmen bulunamadı: '{n}'")
+                team.append(t.id)
+            rids = []
+            for n in room_names:
+                rm = room_svc.get_by_name(n)
+                if rm is None:
+                    raise ValueError(f"derslik bulunamadı: '{n}'")
+                rids.append(rm.id)
+            mode = "all" if mode_text.startswith(("hepsi", "all", "aynı anda")) else "any"
+            class_svc.set_lesson_settings(c.id, sid, teachers=team, rooms=rids, room_mode=mode, link=link, split=split)
 
     cleared: set[tuple[str, int]] = set()
 
@@ -275,7 +298,16 @@ def import_workbook(db: Database, path: Path | str) -> ImportReport:
     run("Derslikler", room_row)
     run("Öğretmenler", teacher_row)
     run("Öğretim Planları", plan_row)
+    parents: list[tuple[int, str]] = []
     run("Sınıflar", class_row)
+    for cid, parent_name in parents:
+        c = class_svc.get(cid)
+        parent = class_svc.get_by_name(parent_name) if parent_name else None
+        if parent_name and parent is None:
+            report.errors.append(f"Sınıflar: '{c.name}' için ana sınıf bulunamadı: '{parent_name}'")
+            continue
+        c.parent_id = parent.id if parent else None
+        class_svc.save(c)
     run("Sınıf Ek Dersleri", extra_row)
     run("Müsaitlik", avail_row)
     return report

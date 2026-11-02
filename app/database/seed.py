@@ -7,7 +7,7 @@ from app.database.models import Room, SchoolClass, Subject, Teacher
 from app.services import meb_catalog
 from app.services.class_service import ClassService
 from app.services.room_service import RoomService
-from app.services.subject_service import CurriculumService, SubjectService
+from app.services.subject_service import SubjectService
 from app.services.teacher_service import TeacherService
 
 LAB = "Bilgisayar Laboratuvarı"
@@ -119,7 +119,7 @@ def clear_all(db: Database):
 def load_demo_data(db: Database, reset: bool = True):
     if reset:
         clear_all(db)
-    subj_svc, cur_svc = SubjectService(db), CurriculumService(db)
+    subj_svc = SubjectService(db)
     teacher_svc, room_svc, class_svc = TeacherService(db), RoomService(db), ClassService(db)
 
     subjects = {}

@@ -6,7 +6,7 @@ from app.core.scheduler import Scheduler
 from app.core.validator import has_errors, validate
 from app.services.class_service import ClassService
 from app.services.room_service import RoomService
-from app.services.subject_service import CurriculumService, SubjectService
+from app.services.subject_service import SubjectService
 from app.services.teacher_service import TeacherService
 
 

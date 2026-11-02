@@ -3,7 +3,6 @@ from tkinter import messagebox, ttk
 
 import customtkinter as ctk
 
-from app.config import SHORT_DAY_NAMES
 
 BLOCKED = "#E57373"
 FREE = "#81C784"

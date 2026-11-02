@@ -61,20 +61,22 @@ def _gaps(periods: list[int]) -> int:
 
 def build_report(problem: Problem, entries: list[Entry]) -> Report:
     p = problem
-    required = sum(l.hours for l in p.lessons)
+    keys = [(cid, l.subject_id, l.hours) for l in p.lessons for cid in l.class_ids]
+    required = sum(h for _, _, h in keys)
     counts = Counter((e.class_id, e.subject_id) for e in entries)
     unplaced = []
-    for l in p.lessons:
-        have = counts.get((l.class_id, l.subject_id), 0)
-        if have < l.hours:
-            unplaced.append((p.classes[l.class_id].name, p.subjects[l.subject_id].name, l.hours - have))
-    placed = sum(min(counts.get((l.class_id, l.subject_id), 0), l.hours) for l in p.lessons)
+    for cid, sid, hours in keys:
+        have = counts.get((cid, sid), 0)
+        if have < hours:
+            unplaced.append((p.classes[cid].name, p.subjects[sid].name, hours - have))
+    placed = sum(min(counts.get((cid, sid), 0), hours) for cid, sid, hours in keys)
     conflicts = check_timetable(p, entries)
 
-    by_teacher_day = defaultdict(list)
+    teacher_slots = defaultdict(set)
     for e in entries:
-        if e.teacher_id is not None:
-            by_teacher_day[(e.teacher_id, e.day)].append(e.period)
+        for tid in e.teacher_ids:
+            teacher_slots[(tid, e.day)].add(e.period)
+    by_teacher_day = {k: sorted(v) for k, v in teacher_slots.items()}
     loads = []
     for tid, t in sorted(p.teachers.items(), key=lambda kv: (kv[1].brans, kv[1].name)):
         daily = [len(by_teacher_day.get((tid, d), [])) for d in range(p.num_days)]
@@ -86,24 +88,34 @@ def build_report(problem: Problem, entries: list[Entry]) -> Report:
         branch[tl.brans or "(branşsız)"].append(tl.hours)
     branch_stats = {b: (sum(h) / len(h), min(h), max(h), len(h)) for b, h in sorted(branch.items())}
 
-    room_hours = Counter(e.room_id for e in entries if e.room_id is not None)
+    room_slots = defaultdict(set)
+    for e in entries:
+        for rid in e.room_ids:
+            room_slots[rid].add((e.day, e.period))
+    room_hours = {rid: len(v) for rid, v in room_slots.items()}
     room_usage = []
     for rid, r in sorted(p.rooms.items(), key=lambda kv: kv[1].name):
         avail = p.num_days * p.periods - len(r.unavailable)
         used = room_hours.get(rid, 0)
         room_usage.append((r.name, used, avail, used / avail if avail else 0.0))
 
-    by_class_day = defaultdict(list)
+    by_class_day = defaultdict(set)
     for e in entries:
-        by_class_day[(e.class_id, e.day)].append(e.period)
+        by_class_day[(e.class_id, e.day)].add(e.period)
+        parent = p.classes[e.class_id].parent_id if e.class_id in p.classes else None
+        if parent is not None:
+            by_class_day[(parent, e.day)].add(e.period)
     class_daily = {}
     class_gaps = 0
     for cid, c in sorted(p.classes.items(), key=lambda kv: (kv[1].grade, kv[1].name)):
-        class_daily[c.name] = [len(by_class_day.get((cid, d), [])) for d in range(p.num_days)]
-        class_gaps += sum(_gaps(by_class_day.get((cid, d), [])) for d in range(p.num_days))
+        class_daily[c.name] = [len(by_class_day.get((cid, d), ())) for d in range(p.num_days)]
+        if c.parent_id is None:
+            class_gaps += sum(_gaps(list(by_class_day.get((cid, d), ()))) for d in range(p.num_days))
 
     half = p.periods / 2
     hard = [e for e in entries if p.subjects.get(e.subject_id) and p.subjects[e.subject_id].difficulty > 0]
+    used = [e.period for e in entries]
+    half = (min(used) + max(used) + 1) / 2 if used else half
     phys = [e for e in entries if p.subjects.get(e.subject_id) and p.subjects[e.subject_id].physical]
     hard_ratio = sum(1 for e in hard if e.period < half) / len(hard) if hard else 1.0
     phys_ratio = sum(1 for e in phys if e.period >= half) / len(phys) if phys else 1.0

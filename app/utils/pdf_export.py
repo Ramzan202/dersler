@@ -61,11 +61,11 @@ def export_pdf(problem: Problem, entries: list[Entry], path: Path | str, mode: s
         label = "Sınıf"
     elif mode == "teacher":
         objs = sorted(problem.teachers.values(), key=lambda t: t.name)
-        pred = lambda e, o: e.teacher_id == o.id  # noqa: E731
+        pred = lambda e, o: o.id in e.teacher_ids  # noqa: E731
         label = "Öğretmen"
     else:
         objs = sorted(problem.rooms.values(), key=lambda r: r.name)
-        pred = lambda e, o: e.room_id == o.id  # noqa: E731
+        pred = lambda e, o: o.id in e.room_ids  # noqa: E731
         label = "Derslik"
 
     story = []
@@ -100,10 +100,14 @@ def export_pdf(problem: Problem, entries: list[Entry], path: Path | str, mode: s
                     lines = [f"<b>{subj}</b>"]
                     if mode != "class":
                         lines.insert(0, problem.classes[e.class_id].name)
-                    if mode != "teacher" and e.teacher_id in problem.teachers:
-                        lines.append(problem.teachers[e.teacher_id].name)
-                    if mode != "room" and e.room_id in problem.rooms:
-                        lines.append(problem.rooms[e.room_id].name)
+                    if mode != "teacher":
+                        names = [problem.teachers[t].name for t in e.teacher_ids if t in problem.teachers]
+                        if names:
+                            lines.append(", ".join(names))
+                    if mode != "room":
+                        rooms = [problem.rooms[r].name for r in e.room_ids if r in problem.rooms]
+                        if rooms:
+                            lines.append(", ".join(rooms))
                     row.append(Paragraph("<br/>".join(lines), cell_style))
                     style.append(("BACKGROUND", (d + 1, p + 1), (d + 1, p + 1),
                                   colors.HexColor(subject_color(problem.subjects[e.subject_id]))))
@@ -112,8 +116,10 @@ def export_pdf(problem: Problem, entries: list[Entry], path: Path | str, mode: s
             data.append(row)
         avail = 170 * mm
         row_h = min(19 * mm, avail / (problem.periods + 1))
-        table = Table(data, colWidths=[first_col] + [col_w] * problem.num_days,
-                      rowHeights=[8 * mm] + [row_h] * problem.periods)
+        cell_style.fontSize = 7.5 if problem.periods <= 10 else 6
+        cell_style.leading = cell_style.fontSize + 1.5
+        heights = [8 * mm] + [row_h] * problem.periods if problem.periods <= 10 else None
+        table = Table(data, colWidths=[first_col] + [col_w] * problem.num_days, rowHeights=heights, repeatRows=1)
         table.setStyle(TableStyle(style))
         story.append(table)
     if not story:

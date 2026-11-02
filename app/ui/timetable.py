@@ -160,18 +160,65 @@ class TimetablePage(ctk.CTkFrame):
         if self.mode == "class":
             return [e for e in self.entries if e.class_id == self.entity_id]
         if self.mode == "teacher":
-            return [e for e in self.entries if e.teacher_id == self.entity_id]
+            return self._dedupe([e for e in self.entries if self.entity_id in e.teacher_ids])
         if self.mode == "room":
-            return [e for e in self.entries if e.room_id == self.entity_id]
+            return self._dedupe([e for e in self.entries if self.entity_id in e.room_ids])
         return [e for e in self.entries if e.day == self.entity_id]
+
+    @staticmethod
+    def _dedupe(items: list[Entry]) -> list[Entry]:
+        """A combined lesson appears once per slot in teacher/room views."""
+        seen, out = set(), []
+        for e in items:
+            key = (e.day, e.period, e.link, e.subject_id) if e.link else ("id", e.id)
+            if key not in seen:
+                seen.add(key)
+                out.append(e)
+        return out
+
+    def _partners(self, entry: Entry) -> list[Entry]:
+        if not entry.link:
+            return []
+        return [x for x in self.entries if x.id != entry.id and x.link == entry.link and x.day == entry.day
+                and x.period == entry.period and x.subject_id == entry.subject_id]
+
+    @staticmethod
+    def _short_name(name: str) -> str:
+        parts = name.split()
+        if len(parts) < 2:
+            return name
+        first = [w for w in parts if not w.isupper()] or parts[:1]
+        last = [w for w in parts if w.isupper()] or parts[-1:]
+        return "".join(w[0] + "." for w in first) + " ".join(last)
+
+    def _group_entries(self, class_id) -> dict:
+        """Lessons of the class's groups (şube grupları), shown read-only in the parent's grid."""
+        p = self.problem
+        groups = [cid for cid, c in p.classes.items() if c.parent_id == class_id]
+        out = {}
+        for e in self.entries:
+            if e.class_id in groups:
+                out.setdefault((e.day, e.period), []).append(e)
+        return out
+
+    def _class_names(self, entry: Entry) -> str:
+        p = self.problem
+        ids = [entry.class_id] + [x.class_id for x in self._partners(entry)]
+        return "+".join(p.classes[c].name for c in ids if c in p.classes) or "?"
 
     # ------------------------------------------------------------------ rendering
     def cell_text(self, e: Entry) -> str:
         p = self.problem
         subj = p.subjects[e.subject_id].label if e.subject_id in p.subjects else "?"
-        teacher = p.teachers[e.teacher_id].name if e.teacher_id in p.teachers else "— öğretmen yok —"
-        room = p.rooms[e.room_id].name if e.room_id in p.rooms else ""
-        cls = p.classes[e.class_id].name if e.class_id in p.classes else "?"
+        external = e.subject_id in p.subjects and p.subjects[e.subject_id].external
+        names = [p.teachers[t].name for t in e.teacher_ids if t in p.teachers]
+        if len(names) > 1:
+            names = [self._short_name(n) for n in names]
+        if len(names) > 3:
+            names = names[:2] + [f"+{len(names) - 2}"]
+        teacher = ", ".join(names) or ("işletmede" if external else "— öğretmen yok —")
+        room = ", ".join(p.rooms[r].name for r in e.room_ids if r in p.rooms)
+        cls = self._class_names(e)
         lock = "🔒 " if e.locked else ""
         if self.mode == "class":
             parts = [lock + subj, teacher, room]
@@ -232,6 +279,7 @@ class TimetablePage(ctk.CTkFrame):
         for e in items:
             grid.setdefault((e.day, e.period), []).append(e)
         closed_slots = self._closed_slots()
+        group_cells = self._group_entries(self.entity_id) if self.mode == "class" else {}
         for per in range(p.periods):
             label = f"{per + 1}. ders" + (f"\n{times[per]}" if per < len(times) else "")
             tk.Label(frame, text=label, font=head_font, bg="#ECEFF1", padx=6).grid(row=per + 1, column=0,
@@ -239,6 +287,9 @@ class TimetablePage(ctk.CTkFrame):
             for d in range(p.num_days):
                 cell_entries = grid.get((d, per), [])
                 e = cell_entries[0] if cell_entries else None
+                if e is None and (d, per) in group_cells:
+                    self._group_cell(frame, per + 1, d + 1, group_cells[(d, per)], font, slot=(d, per))
+                    continue
                 self._make_cell(frame, per + 1, d + 1, e, font, (d, per) in closed_slots, slot=(d, per),
                                 clash=len(cell_entries) > 1)
         hours = len(items)
@@ -278,13 +329,27 @@ class TimetablePage(ctk.CTkFrame):
                           pady=3 if (is_conflict or is_selected) else 0)
         holder.grid(row=row, column=col, sticky="nsew", padx=1, pady=1)
         lbl = tk.Label(holder, text=text, bg=bg, fg=text_color_for(bg) if e else "#9E9E9E", font=font,
-                       justify="center", height=3, width=16, wraplength=int(150 * self.app.scaling))
+                       justify="center", height=3, width=16, wraplength=int(210 * self.app.scaling))
         lbl.pack(fill="both", expand=True)
         if slot is not None:
             lbl.bind("<Button-1>", lambda _ev, s=slot, en=e: guarded(self)(self.on_click)(s, en))
             lbl.bind("<Button-3>", lambda ev, s=slot, en=e: guarded(self)(self.on_menu)(ev, s, en))
             lbl.bind("<Button-2>", lambda ev, s=slot, en=e: guarded(self)(self.on_menu)(ev, s, en))
         self.cells[slot or (row, col)] = lbl
+
+    def _group_cell(self, frame, row, col, items, font, slot):
+        p = self.problem
+        seen = []
+        for e in items:
+            label = f"{p.classes[e.class_id].name.split('-')[-1]}: {p.subjects[e.subject_id].label}"
+            if label not in seen:
+                seen.append(label)
+        text = "Gruplarda:\n" + " · ".join(seen)
+        lbl = tk.Label(frame, text=text, bg="#ECEFF1", fg="#546E7A", font=font, justify="center", height=3, width=16,
+                       wraplength=int(210 * self.app.scaling))
+        lbl.grid(row=row, column=col, sticky="nsew", padx=1, pady=1)
+        lbl.bind("<Button-1>", lambda _ev, s=slot: guarded(self)(self.on_click)(s, None))
+        self.cells[slot] = lbl
 
     def _missing_for_class(self, cid):
         counts = Counter(e.subject_id for e in self.entries if e.class_id == cid)
@@ -354,11 +419,14 @@ class TimetablePage(ctk.CTkFrame):
 
     def move(self, entry: Entry, slot, occupant: Entry | None):
         old = (entry.day, entry.period)
-        entry.day, entry.period = slot
-        self.svc.update_entry(entry)
-        if occupant is not None:
-            occupant.day, occupant.period = old
-            self.svc.update_entry(occupant)
+        moving = [entry] + self._partners(entry)
+        swapping = ([occupant] + self._partners(occupant)) if occupant is not None else []
+        for e in moving:
+            e.day, e.period = slot
+            self.svc.update_entry(e)
+        for e in swapping:
+            e.day, e.period = old
+            self.svc.update_entry(e)
         self.selected = None
         self.after_edit("Ders taşındı" + (" (yer değiştirildi)" if occupant else ""))
 
@@ -392,18 +460,25 @@ class TimetablePage(ctk.CTkFrame):
         lesson = self._lesson(entry)
         p = self.problem
         candidates = lesson.teacher_candidates if lesson else list(p.teachers)
-        options = [(t, p.teachers[t].name) for t in candidates if t in p.teachers]
-        vals = FormDialog(self, "Öğretmeni değiştir", [
-            dict(key="teacher_id", label="Öğretmen", kind="combo_id", options=options, value=entry.teacher_id,
-                 allow_none=False, help="Yalnızca bu dersi vermeye yetkili öğretmenler."),
+        options = [(t.id, f"{t.name} ({t.brans})" + (" ✓" if t.id in candidates else ""))
+                   for t in sorted(p.teachers.values(), key=lambda t: t.name)]
+        vals = FormDialog(self, "Öğretmen(ler)i değiştir", [
+            dict(key="teachers", label="Öğretmen(ler)", kind="multi", options=options, value=entry.teacher_ids,
+                 help="✓ = bu derse yetkili. Birden fazla seçilirse ekip olarak aynı anda derse girerler. Yetkisi "
+                      "olmayan öğretmen "
+                      "seçilirse kontrol listesinde uyarı çıkar."),
             dict(key="all", label="Bu dersin tüm saatlerine uygula", kind="check", value=1),
-        ], height=260).show()
+        ], width=720, height=520).show()
         if not vals:
             return
-        targets = [e for e in self.entries if (e.class_id, e.subject_id) == (entry.class_id, entry.subject_id)] \
-            if vals["all"] else [entry]
+        if not vals["teachers"]:
+            raise ValueError("En az bir öğretmen seçin.")
+        keys = {(x.class_id, x.subject_id) for x in [entry] + self._partners(entry)}
+        targets = [e for e in self.entries if (e.class_id, e.subject_id) in keys] if vals["all"] \
+            else [entry] + self._partners(entry)
         for e in targets:
-            e.teacher_id = vals["teacher_id"]
+            e.teacher_id = vals["teachers"][0]
+            e.extra_teachers = ",".join(map(str, vals["teachers"][1:]))
             self.svc.update_entry(e)
         self.after_edit("Öğretmen değiştirildi")
 
@@ -412,27 +487,31 @@ class TimetablePage(ctk.CTkFrame):
         lesson = self._lesson(entry)
         rooms = sorted(p.rooms.values(), key=lambda r: r.name)
         options = [(r.id, r.name + (" ✓" if lesson and r.id in lesson.room_candidates else "")) for r in rooms]
-        vals = FormDialog(self, "Dersliği değiştir", [
-            dict(key="room_id", label="Derslik", kind="combo_id", options=options, value=entry.room_id,
-                 help="✓ = bu ders için uygun derslik"),
+        vals = FormDialog(self, "Derslik(ler)i değiştir", [
+            dict(key="rooms", label="Derslik(ler)", kind="multi", options=options, value=entry.room_ids,
+                 help="✓ = bu ders için uygun derslik. Birden fazla seçilirse aynı anda kullanılır."),
             dict(key="all", label="Bu dersin tüm saatlerine uygula", kind="check", value=0),
-        ], height=260).show()
+        ], width=720, height=480).show()
         if not vals:
             return
         targets = [e for e in self.entries if (e.class_id, e.subject_id) == (entry.class_id, entry.subject_id)] \
             if vals["all"] else [entry]
         for e in targets:
-            e.room_id = vals["room_id"]
+            e.room_id = vals["rooms"][0] if vals["rooms"] else None
+            e.extra_rooms = ",".join(map(str, vals["rooms"][1:]))
             self.svc.update_entry(e)
         self.after_edit("Derslik değiştirildi")
 
     def toggle_lock(self, entry):
-        entry.locked = 0 if entry.locked else 1
-        self.svc.update_entry(entry)
+        value = 0 if entry.locked else 1
+        for e in [entry] + self._partners(entry):
+            e.locked = value
+            self.svc.update_entry(e)
         self.after_edit("Kilit değiştirildi")
 
     def delete_entry(self, entry):
-        self.svc.delete_entry(entry.id, self.tt.id)
+        for e in [entry] + self._partners(entry):
+            self.svc.delete_entry(e.id, self.tt.id)
         self.after_edit("Ders saati silindi")
 
     def add_entry(self, slot):
@@ -451,10 +530,15 @@ class TimetablePage(ctk.CTkFrame):
             return
         lesson = self._lesson((self.entity_id, vals["subject_id"]))
         same = [e for e in self.entries if (e.class_id, e.subject_id) == (self.entity_id, vals["subject_id"])]
-        teacher = same[0].teacher_id if same else (lesson.teacher_candidates[0] if lesson.teacher_candidates else None)
-        room = same[0].room_id if same else (lesson.room_candidates[0] if lesson.room_candidates else None)
+        if same:
+            team, rooms = same[0].teacher_ids, same[0].room_ids
+        else:
+            team = list(lesson.teacher_candidates) if lesson.team else lesson.teacher_candidates[:1]
+            rooms = list(lesson.room_candidates) if lesson.room_mode == "all" else lesson.room_candidates[:1]
         self.svc.add_entry(Entry(timetable_id=self.tt.id, class_id=self.entity_id, subject_id=vals["subject_id"],
-                                 teacher_id=teacher, room_id=room, day=slot[0], period=slot[1],
+                                 teacher_id=team[0] if team else None, room_id=rooms[0] if rooms else None,
+                                 day=slot[0], period=slot[1], extra_teachers=",".join(map(str, team[1:])),
+                                 extra_rooms=",".join(map(str, rooms[1:])),
                                  block=max((e.block for e in self.entries), default=0) + 1))
         self.after_edit("Ders eklendi")
 

@@ -1,4 +1,4 @@
-import json, re, os, collections
+import json, re, os
 from parse import parse_file
 idx = [l.split('\t') for l in open('index.tsv', encoding='utf-8').read().split('\n') if l]
 VOW = set("AEIİOÖUÜaeıioöuü")

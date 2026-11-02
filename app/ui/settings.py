@@ -90,6 +90,7 @@ class SettingsPage(ctk.CTkScrollableFrame):
 
         data = self.section("Veri işlemleri")
         buttons = [
+            ("🏫 Okul programını içe aktar", self.import_school, "#2E7D32"),
             ("📥 Excel'den içe aktar", self.import_excel, "#1565C0"),
             ("📤 Tüm verileri Excel'e aktar", self.export_excel, "#1565C0"),
             ("📄 Boş Excel şablonu", self.export_template, "#1565C0"),
@@ -104,7 +105,7 @@ class SettingsPage(ctk.CTkScrollableFrame):
             ctk.CTkButton(data, text=text, command=g(cmd), width=230, **({"fg_color": color} if color else {})).grid(
                 row=i // 3, column=i % 3, padx=8, pady=6, sticky="w")
         self.backup_info = ctk.CTkLabel(data, text="", text_color="gray", justify="left")
-        self.backup_info.grid(row=4, column=0, columnspan=3, sticky="w", padx=10, pady=(4, 8))
+        self.backup_info.grid(row=5, column=0, columnspan=3, sticky="w", padx=10, pady=(4, 8))
 
     @staticmethod
     def _level(v: int) -> str:
@@ -211,6 +212,22 @@ class SettingsPage(ctk.CTkScrollableFrame):
             from app.ui.widgets import show_error
             show_error(self, f"Ayarlar kaydedilemedi: {exc}\nLütfen değeri düzeltin.")
             return False
+
+    def import_school(self):
+        paths = filedialog.askopenfilenames(parent=self, title="Sınıf programları (9, 10, 11, 12. sınıf Excel dosyaları)",
+                                            filetypes=[("Excel", "*.xlsx *.xlsm")])
+        if not paths:
+            return
+        if not ask_yes_no(self, f"{len(paths)} dosyadan okulun sınıfları, dersleri, öğretmenleri, derslikleri ve "
+                                f"mevcut ders programı aktarılacak. Mevcut tüm veriler bunlarla DEĞİŞTİRİLECEK "
+                                f"(öncesinde yedek alınır). Devam edilsin mi?"):
+            return
+        from app.utils.school_import import import_school
+        backup = create_backup(self.app.db, "okul_aktarma_oncesi")
+        result = import_school(self.app.db, list(paths))
+        self.app.data_changed()
+        show_info(self, "Okul programı aktarıldı ve 'Mevcut program (okul)' varyantı oluşturuldu.\n\n" + result.text()
+                  + f"\n\nÖnceki verilerin yedeği: {backup.name}")
 
     def import_excel(self):
         path = filedialog.askopenfilename(parent=self, filetypes=[("Excel", "*.xlsx *.xlsm")])

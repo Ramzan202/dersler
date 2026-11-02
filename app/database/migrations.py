@@ -150,6 +150,24 @@ MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_entries_tt ON timetable_entries(timetable_id);
     CREATE INDEX IF NOT EXISTS idx_unavail ON unavailability(entity_type, entity_id);
     """,
+    """
+    ALTER TABLE subjects ADD COLUMN external INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE rooms ADD COLUMN max_parallel INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE classes ADD COLUMN parent_id INTEGER REFERENCES classes(id) ON DELETE SET NULL;
+    ALTER TABLE timetable_entries ADD COLUMN extra_teachers TEXT NOT NULL DEFAULT '';
+    ALTER TABLE timetable_entries ADD COLUMN extra_rooms TEXT NOT NULL DEFAULT '';
+    ALTER TABLE timetable_entries ADD COLUMN link INTEGER NOT NULL DEFAULT 0;
+    CREATE TABLE IF NOT EXISTS class_lesson_settings (
+        class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+        subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+        teachers TEXT NOT NULL DEFAULT '',
+        rooms TEXT NOT NULL DEFAULT '',
+        room_mode TEXT NOT NULL DEFAULT 'any',
+        link TEXT NOT NULL DEFAULT '',
+        split TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (class_id, subject_id)
+    );
+    """,
 ]
 
 

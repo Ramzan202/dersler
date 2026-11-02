@@ -101,12 +101,29 @@ def add_objective(tm: TimetableModel) -> list[ObjectiveTerm]:
         if lesson.preferred_pattern is not None and len(zvars) > 1 and lesson.preferred_pattern in zvars:
             raw["split_preference"].append(1 - zvars[lesson.preferred_pattern])
 
+    groups_of = defaultdict(list)
+    for gid, g in problem.classes.items():
+        if g.parent_id is not None:
+            groups_of[g.parent_id].append(gid)
     for cid, slots in tm.class_occ.items():
         cls = problem.classes[cid]
+        if cls.parent_id is not None:
+            continue
         daily_loads = []
-        hard_lessons = [l for l in problem.lessons if l.class_id == cid and l.difficulty > 0]
+        hard_lessons = [l for l in problem.lessons if cid in l.class_ids and l.difficulty > 0]
         for d in cls.days:
             busy = [slots.get((d, p), 0) for p in range(P)]
+            group_busy = [[tm.class_occ.get(g, {}).get((d, p), 0) for g in groups_of.get(cid, [])] for p in range(P)]
+            for p in range(P):
+                parts = [x for x in [busy[p]] + group_busy[p] if not isinstance(x, int)]
+                if len(parts) > 1:
+                    b = m.NewBoolVar("")
+                    for x in parts:
+                        m.Add(b >= x)
+                    m.Add(b <= sum(parts))
+                    busy[p] = b
+                elif parts:
+                    busy[p] = parts[0]
             if any(not isinstance(b, int) for b in busy):
                 raw["class_gaps"].extend(_gap_penalty(m, busy, P))
             daily_loads.append(sum(busy))

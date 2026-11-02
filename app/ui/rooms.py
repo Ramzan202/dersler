@@ -6,7 +6,7 @@ from app.ui.widgets import AvailabilityDialog, EntityPage, FormDialog, ask_yes_n
 
 class RoomsPage(EntityPage):
     title = "Derslikler"
-    columns = [("name", "Derslik", 140), ("type", "Tür", 170), ("cap", "Kapasite", 70),
+    columns = [("name", "Derslik", 140), ("type", "Tür", 170), ("cap", "Kapasite", 70), ("par", "Aynı anda", 75),
                ("equip", "Donanım", 200), ("cls", "Atanan Sınıf", 100), ("subjects", "Uygun Dersler", 300),
                ("blocked", "Kapalı Saat", 85)]
 
@@ -25,7 +25,7 @@ class RoomsPage(EntityPage):
             names = [subjects[i].label for i in r.subject_ids if i in subjects]
             names += [s.label for s in subjects.values() if s.room_type and s.room_type == r.room_type
                       and s.id not in r.subject_ids]
-            rows.append((r.id, (r.name, r.room_type, r.capacity, r.equipment, self.svc.assigned_class(r.id),
+            rows.append((r.id, (r.name, r.room_type, r.capacity, r.max_parallel, r.equipment, self.svc.assigned_class(r.id),
                                 ", ".join(names) or "Genel dersler", len(self.svc.get_unavailable(r.id)))))
         return rows
 
@@ -35,7 +35,9 @@ class RoomsPage(EntityPage):
             dict(key="name", label="Derslik adı", value=r.name),
             dict(key="room_type", label="Tür", kind="combo", options=self.svc.room_types(), value=r.room_type,
                  editable=True, help="Dersin 'derslik türü' bu türle eşleşirse ders burada yapılabilir."),
-            dict(key="capacity", label="Kapasite", kind="int", value=r.capacity, help="0 = sınırsız"),
+            dict(key="capacity", label="Kapasite (öğrenci)", kind="int", value=r.capacity, help="0 = sınırsız"),
+            dict(key="max_parallel", label="Aynı anda en fazla ders", kind="int", value=r.max_parallel, default=1,
+                 help="Büyük atölyede aynı saatte birden fazla sınıf/grup ders yapabiliyorsa 2, 3…"),
             dict(key="equipment", label="Donanım", value=r.equipment),
             dict(key="alan", label="Alan", value=r.alan),
             dict(key="subject_ids", label="Uygun dersler (ek)", kind="multi", options=subjects, value=r.subject_ids),

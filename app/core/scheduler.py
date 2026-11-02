@@ -8,7 +8,7 @@ from typing import Callable
 from ortools.sat.python import cp_model
 
 from app.core.constraints import TimetableModel
-from app.core.optimizer import ObjectiveTerm, add_objective
+from app.core.optimizer import add_objective
 from app.core.problem import Problem
 from app.core.splits import format_pattern
 from app.database.models import Entry
@@ -131,18 +131,27 @@ class Scheduler:
     def _extract(self, tm: TimetableModel, solver: cp_model.CpSolver) -> list[Entry]:
         entries = []
         block_id = 0
+
+        def chosen(options):
+            return [r for r, v in options.items() if (v if isinstance(v, int) else solver.Value(v))]
+
         for lesson in self.problem.lessons:
             k = lesson.index
-            teacher = next((t for t, v in tm.y[k].items() if (v if isinstance(v, int) else solver.Value(v))), None)
-            room = next((r for r, v in tm.r.get(k, {}).items() if (v if isinstance(v, int) else solver.Value(v))),
-                        None)
+            teachers = chosen(tm.y[k])
+            rooms = chosen(tm.r.get(k, {}))
+            link = k + 1 if len(lesson.class_ids) > 1 else 0
             for (length, d, start), var in sorted(tm.starts[k].items(), key=lambda kv: (kv[0][1], kv[0][2])):
                 if solver.Value(var):
                     block_id += 1
+                    if k in tm.room_blocks:
+                        rooms = chosen(tm.room_blocks[k].get((length, d, start), {}))
                     for i in range(length):
-                        entries.append(Entry(class_id=lesson.class_id, subject_id=lesson.subject_id,
-                                             teacher_id=teacher, room_id=room, day=d, period=start + i,
-                                             block=block_id))
+                        for cid in lesson.class_ids:
+                            entries.append(Entry(class_id=cid, subject_id=lesson.subject_id,
+                                                 teacher_id=teachers[0] if teachers else None,
+                                                 room_id=rooms[0] if rooms else None, day=d, period=start + i,
+                                                 block=block_id, extra_teachers=",".join(map(str, teachers[1:])),
+                                                 extra_rooms=",".join(map(str, rooms[1:])), link=link))
         return entries
 
     def diagnose(self, locked: list[Entry] | None = None, time_limit: float = 30.0) -> list[str]:
@@ -208,7 +217,7 @@ class Scheduler:
             if kind in ("hours", "split", "locked", "teacher_missing", "room_missing"):
                 lesson = p.lessons[ident]
                 lessons_in_core.append(lesson)
-                cls = p.classes[lesson.class_id].name
+                cls = "+".join(p.classes[c].name for c in lesson.class_ids)
                 subj = p.subjects[lesson.subject_id].name
                 if kind == "hours":
                     msgs.append(f"{cls} sınıfının {subj} dersi için {lesson.hours} saat yerleştirilemiyor.")

@@ -45,6 +45,7 @@ class Subject(RowModel):
     elective: int = 0
     vocational: int = 0
     color: str = ""
+    external: int = 0
 
     @property
     def label(self) -> str:
@@ -97,6 +98,7 @@ class Room(RowModel):
     equipment: str = ""
     alan: str = ""
     notes: str = ""
+    max_parallel: int = 1
     subject_ids: list[int] = field(default_factory=list)
 
 
@@ -115,6 +117,7 @@ class SchoolClass(RowModel):
     max_daily: int = 0
     available_days: str = "0,1,2,3,4"
     notes: str = ""
+    parent_id: int | None = None
 
     @property
     def day_list(self) -> list[int]:
@@ -146,6 +149,19 @@ class Entry(RowModel):
     period: int = 0
     block: int = 0
     locked: int = 0
+    extra_teachers: str = ""
+    extra_rooms: str = ""
+    link: int = 0
+
+    @property
+    def teacher_ids(self) -> list[int]:
+        ids = [self.teacher_id] if self.teacher_id is not None else []
+        return ids + [i for i in _parse_int_list(self.extra_teachers) if i not in ids]
+
+    @property
+    def room_ids(self) -> list[int]:
+        ids = [self.room_id] if self.room_id is not None else []
+        return ids + [i for i in _parse_int_list(self.extra_rooms) if i not in ids]
 
 
 parse_int_list = _parse_int_list

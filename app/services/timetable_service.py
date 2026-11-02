@@ -45,25 +45,25 @@ class TimetableService(CrudService):
             conn.execute("DELETE FROM timetable_entries WHERE timetable_id = ?", (timetable_id,))
             conn.executemany(
                 "INSERT INTO timetable_entries(timetable_id, class_id, subject_id, teacher_id, room_id, day, period, "
-                "block, locked) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "block, locked, extra_teachers, extra_rooms, link) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [(timetable_id, e.class_id, e.subject_id, e.teacher_id, e.room_id, e.day, e.period, e.block,
-                  e.locked) for e in entries])
+                  e.locked, e.extra_teachers, e.extra_rooms, e.link) for e in entries])
 
     def add_entry(self, entry: Entry) -> Entry:
         entry.id = self.db.execute(
             "INSERT INTO timetable_entries(timetable_id, class_id, subject_id, teacher_id, room_id, day, period, "
-            "block, locked) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "block, locked, extra_teachers, extra_rooms, link) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (entry.timetable_id, entry.class_id, entry.subject_id, entry.teacher_id, entry.room_id, entry.day,
-             entry.period, entry.block, entry.locked))
+             entry.period, entry.block, entry.locked, entry.extra_teachers, entry.extra_rooms, entry.link))
         self._mark_manual(entry.timetable_id)
         return entry
 
     def update_entry(self, entry: Entry):
         self.db.execute(
             "UPDATE timetable_entries SET class_id = ?, subject_id = ?, teacher_id = ?, room_id = ?, day = ?, "
-            "period = ?, block = ?, locked = ? WHERE id = ?",
+            "period = ?, block = ?, locked = ?, extra_teachers = ?, extra_rooms = ?, link = ? WHERE id = ?",
             (entry.class_id, entry.subject_id, entry.teacher_id, entry.room_id, entry.day, entry.period, entry.block,
-             entry.locked, entry.id))
+             entry.locked, entry.extra_teachers, entry.extra_rooms, entry.link, entry.id))
         self._mark_manual(entry.timetable_id)
 
     def delete_entry(self, entry_id: int, timetable_id: int | None = None):

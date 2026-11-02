@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.database.models import SchoolClass, parse_int_list
 from app.services.base import AvailabilityMixin, CrudService
@@ -11,6 +11,27 @@ class ClassLesson:
     hours: int
     source: str
     fixed_teacher_id: int | None = None
+    teachers: list[int] = field(default_factory=list)
+    rooms: list[int] = field(default_factory=list)
+    room_mode: str = "any"
+    link: str = ""
+    split: str = ""
+
+    @property
+    def team(self) -> list[int]:
+        """Teachers who all teach this lesson together (empty = chosen automatically)."""
+        if self.teachers:
+            return self.teachers
+        return [self.fixed_teacher_id] if self.fixed_teacher_id else []
+
+
+def parse_int_list_ordered(text) -> list[int]:
+    out = []
+    for x in str(text or "").replace(";", ",").split(","):
+        x = x.strip()
+        if x and int(x) not in out:
+            out.append(int(x))
+    return out
 
 
 class ClassService(AvailabilityMixin, CrudService):
@@ -46,7 +67,34 @@ class ClassService(AvailabilityMixin, CrudService):
         for r in self.db.query("SELECT subject_id, teacher_id FROM class_fixed_teachers WHERE class_id = ?", (class_id,)):
             if r["subject_id"] in result:
                 result[r["subject_id"]].fixed_teacher_id = r["teacher_id"]
+        for r in self.db.query("SELECT * FROM class_lesson_settings WHERE class_id = ?", (class_id,)):
+            lesson = result.get(r["subject_id"])
+            if lesson is not None:
+                lesson.teachers = parse_int_list_ordered(r["teachers"])
+                lesson.rooms = parse_int_list_ordered(r["rooms"])
+                lesson.room_mode = r["room_mode"] or "any"
+                lesson.link = r["link"] or ""
+                lesson.split = r["split"] or ""
         return list(result.values())
+
+    def set_lesson_settings(self, class_id: int, subject_id: int, teachers=(), rooms=(), room_mode: str = "any",
+                            link: str = "", split: str = ""):
+        with self.db.transaction() as conn:
+            conn.execute(
+                "INSERT INTO class_lesson_settings(class_id, subject_id, teachers, rooms, room_mode, link, split) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(class_id, subject_id) DO UPDATE SET "
+                "teachers = excluded.teachers, rooms = excluded.rooms, room_mode = excluded.room_mode, "
+                "link = excluded.link, split = excluded.split",
+                (class_id, subject_id, ",".join(str(t) for t in teachers), ",".join(str(r) for r in rooms),
+                 room_mode, link, split))
+
+    def clear_lesson_settings(self, class_id: int, subject_id: int):
+        self.db.execute("DELETE FROM class_lesson_settings WHERE class_id = ? AND subject_id = ?",
+                        (class_id, subject_id))
+
+    def groups(self, class_id: int) -> list[SchoolClass]:
+        rows = self.db.query("SELECT * FROM classes WHERE parent_id = ? ORDER BY name", (class_id,))
+        return [SchoolClass.from_row(r) for r in rows]
 
     def total_hours(self, class_id: int) -> int:
         return sum(lesson.hours for lesson in self.lessons(class_id))

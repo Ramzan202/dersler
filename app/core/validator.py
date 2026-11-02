@@ -41,7 +41,8 @@ def validate(db: Database, problem: Problem) -> list[Issue]:
     class_rows = {r["id"]: r for r in db.query("SELECT id, curriculum_id, weekly_hours FROM classes")}
     lessons_by_class = defaultdict(list)
     for lesson in p.lessons:
-        lessons_by_class[lesson.class_id].append(lesson)
+        for cid in lesson.class_ids:
+            lessons_by_class[cid].append(lesson)
 
     for cid, cls in p.classes.items():
         row = class_rows.get(cid)
@@ -65,7 +66,7 @@ def validate(db: Database, problem: Problem) -> list[Issue]:
                              f"({total}) farklı.")
         for lesson in lessons:
             subj = p.subjects[lesson.subject_id].name
-            if not lesson.teacher_candidates:
+            if not lesson.teacher_candidates and not lesson.external:
                 err("Dersler", f"{cls.name} – {subj}: bu dersi verebilecek öğretmen yok. Öğretmenin ders listesine "
                                f"ekleyin veya dersin branşını belirleyin.")
             if lesson.room_required and not lesson.room_candidates:
@@ -85,8 +86,9 @@ def validate(db: Database, problem: Problem) -> list[Issue]:
     for lesson in p.lessons:
         for t in lesson.teacher_candidates:
             demand[t] += lesson.hours
-        if len(lesson.teacher_candidates) == 1:
-            sole_demand[lesson.teacher_candidates[0]] += lesson.hours
+        if lesson.team or len(lesson.teacher_candidates) == 1:
+            for t in lesson.teacher_candidates:
+                sole_demand[t] += lesson.hours
     for tid, t in p.teachers.items():
         free = p.num_days * p.periods - len(t.unavailable)
         if sole_demand[tid] > t.max_weekly:
@@ -104,7 +106,8 @@ def validate(db: Database, problem: Problem) -> list[Issue]:
             err("Öğretmenler", f"{t.name}: haftalık en az {t.min_weekly} ders isteniyor, ancak verebileceği derslerin "
                                f"toplamı {demand[tid]} saat.")
 
-    total_demand = sum(l.hours for l in p.lessons)
+    total_demand = sum(l.hours * max(1, len(l.teacher_candidates) if l.team else 1) for l in p.lessons
+                       if not l.external)
     total_capacity = sum(min(t.max_weekly, p.num_days * p.periods - len(t.unavailable)) for t in p.teachers.values())
     if total_demand > total_capacity:
         err("Öğretmenler", f"Toplam ders yükü {total_demand} saat, öğretmenlerin toplam kapasitesi {total_capacity} saat.")
@@ -122,18 +125,19 @@ def validate(db: Database, problem: Problem) -> list[Issue]:
 
     room_need = defaultdict(int)
     for lesson in p.lessons:
-        if len(lesson.room_candidates) == 1:
-            room_need[lesson.room_candidates[0]] += lesson.hours
+        if len(lesson.room_candidates) == 1 or lesson.room_mode == "all":
+            for rid in lesson.room_candidates:
+                room_need[rid] += lesson.hours
     for rid, need in room_need.items():
         r = p.rooms[rid]
-        free = p.num_days * p.periods - len(r.unavailable)
+        free = (p.num_days * p.periods - len(r.unavailable)) * r.max_parallel
         if need > free:
             err("Derslikler", f"{r.name}: yalnızca bu derslikte yapılabilecek dersler {need} saat, dersliğin müsait "
                               f"zamanı {free} saat. Ek derslik tanımlayın.")
     type_need = defaultdict(int)
     type_rooms = defaultdict(set)
     for lesson in p.lessons:
-        if lesson.room_required and len(lesson.room_candidates) > 1:
+        if lesson.room_required and len(lesson.room_candidates) > 1 and lesson.room_mode != "all":
             key = tuple(lesson.room_candidates)
             type_need[key] += lesson.hours
             type_rooms[key] = set(lesson.room_candidates)

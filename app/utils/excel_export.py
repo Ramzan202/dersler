@@ -94,10 +94,11 @@ def export_data(db: Database, path: Path | str, template_only: bool = False) -> 
                                       s.difficulty, yn(s.physical), time_text.get(s.preferred_time, "Farketmez"),
                                       s.room_type, yn(s.room_required), s.min_block, s.max_block, s.allowed_splits,
                                       s.forbidden_splits, s.preferred_split, yn(s.allow_same_day), yn(s.elective),
-                                      yn(s.vocational), s.color])
+                                      yn(s.vocational), s.color, yn(s.external)])
         for r in rooms.values():
             sheets["Derslikler"].append([r.name, r.room_type, r.capacity, r.equipment, r.alan,
-                                         "; ".join(subjects[i].name for i in r.subject_ids if i in subjects), r.notes])
+                                         "; ".join(subjects[i].name for i in r.subject_ids if i in subjects), r.notes,
+                                         r.max_parallel])
         for t in teachers.values():
             sheets["Öğretmenler"].append([t.name, t.brans, t.max_daily, t.max_weekly, t.min_weekly,
                                           t.max_consecutive, ", ".join(ALL_DAY_NAMES[d] for d in t.preferred_day_list),
@@ -107,19 +108,30 @@ def export_data(db: Database, path: Path | str, template_only: bool = False) -> 
             for item in cur_svc.items(c.id):
                 sheets["Öğretim Planları"].append([c.name, c.grade or "", c.alan, c.dal, c.program_type,
                                                    subjects[item.subject_id].name, item.hours])
+        class_names = {c.id: c.name for c in class_svc.list()}
         for c in class_svc.list():
             sheets["Sınıflar"].append([c.name, c.grade, c.alan, c.dal, c.program_type,
                                        curricula[c.curriculum_id].name if c.curriculum_id in curricula else "",
                                        rooms[c.home_room_id].name if c.home_room_id in rooms else "",
                                        c.student_count, c.weekly_hours, c.max_daily,
                                        ", ".join(ALL_DAY_NAMES[d] for d in parse_int_list(c.available_days)),
-                                       c.notes])
+                                       c.notes, class_names.get(c.parent_id, "")])
             fixed = class_svc.fixed_teachers(c.id)
             extras = class_svc.extra_lessons(c.id)
-            for sid in sorted(set(fixed) | set(extras)):
+            settings = {r["subject_id"]: r for r in db.query("SELECT * FROM class_lesson_settings WHERE class_id = ?",
+                                                             (c.id,))}
+            for sid in sorted(set(fixed) | set(extras) | set(settings)):
+                st = settings.get(sid)
+                team = rooms_txt = mode = link = split = ""
+                if st is not None:
+                    team = "; ".join(teachers[int(t)].name for t in st["teachers"].split(",") if t and int(t) in teachers)
+                    rooms_txt = "; ".join(rooms[int(r)].name for r in st["rooms"].split(",") if r and int(r) in rooms)
+                    mode = "Hepsi aynı anda" if st["room_mode"] == "all" else "Birini seç"
+                    link, split = st["link"], st["split"]
                 sheets["Sınıf Ek Dersleri"].append([
                     c.name, subjects[sid].name, extras.get(sid, ""),
-                    teachers[fixed[sid]].name if fixed.get(sid) in teachers else ""])
+                    teachers[fixed[sid]].name if fixed.get(sid) in teachers else "", team, rooms_txt, mode, link,
+                    split])
         for kind, label, svc, items in (("teacher", "Öğretmen", teacher_svc, teachers.values()),
                                         ("room", "Derslik", room_svc, rooms.values()),
                                         ("class", "Sınıf", class_svc, class_svc.list())):
@@ -138,8 +150,8 @@ def export_data(db: Database, path: Path | str, template_only: bool = False) -> 
 
 def _cell_text(problem: Problem, e: Entry, mode: str) -> str:
     subj = problem.subjects[e.subject_id].label if e.subject_id in problem.subjects else "?"
-    teacher = problem.teachers[e.teacher_id].name if e.teacher_id in problem.teachers else ""
-    room = problem.rooms[e.room_id].name if e.room_id in problem.rooms else ""
+    teacher = ", ".join(problem.teachers[t].name for t in e.teacher_ids if t in problem.teachers)
+    room = ", ".join(problem.rooms[r].name for r in e.room_ids if r in problem.rooms)
     cls = problem.classes[e.class_id].name if e.class_id in problem.classes else ""
     if mode == "class":
         return "\n".join(x for x in (subj, teacher, room) if x)
@@ -204,7 +216,7 @@ def export_timetable(problem: Problem, entries: list[Entry], path: Path | str, t
                     e = by_class[cid].get((d, p))
                     if e:
                         subj = problem.subjects[e.subject_id].label
-                        t = problem.teachers[e.teacher_id].name if e.teacher_id in problem.teachers else ""
+                        t = ", ".join(problem.teachers[x].name for x in e.teacher_ids if x in problem.teachers)
                         row.append(f"{subj}\n{t}")
                     else:
                         row.append("")
@@ -231,13 +243,21 @@ def export_timetable(problem: Problem, entries: list[Entry], path: Path | str, t
                        lambda e, obj: e.class_id == obj.id, "Sınıf"))
     if "teacher" in parts:
         groups.append(("teacher", "Ö", sorted(problem.teachers.values(), key=lambda t: t.name),
-                       lambda e, obj: e.teacher_id == obj.id, "Öğretmen"))
+                       lambda e, obj: obj.id in e.teacher_ids, "Öğretmen"))
     if "room" in parts:
         groups.append(("room", "D", sorted(problem.rooms.values(), key=lambda r: r.name),
-                       lambda e, obj: e.room_id == obj.id, "Derslik"))
+                       lambda e, obj: obj.id in e.room_ids, "Derslik"))
     for mode, prefix, objs, pred, label in groups:
         for obj in objs:
             items = [e for e in entries if pred(e, obj)]
+            if mode != "class":
+                seen, unique = set(), []
+                for e in items:
+                    key = (e.day, e.period, e.link, e.subject_id) if e.link else ("id", id(e))
+                    if key not in seen:
+                        seen.add(key)
+                        unique.append(e)
+                items = unique
             if not items and mode != "class":
                 continue
             ws = wb.create_sheet(safe_sheet_title(f"{prefix}-{obj.name}", used))
