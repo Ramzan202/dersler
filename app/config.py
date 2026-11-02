@@ -41,10 +41,9 @@ DEFAULT_SETTINGS = {
     "school_name": "Mesleki ve Teknik Anadolu Lisesi",
     "academic_year": "2026-2027",
     "days_count": 5,
-    "periods_per_day": 9,
+    "periods_per_day": 6,
     "period_times": [
-        "08:30-09:10", "09:20-10:00", "10:10-10:50", "11:00-11:40", "11:50-12:30",
-        "13:10-13:50", "14:00-14:40", "14:50-15:30", "15:40-16:20", "16:30-17:10",
+        "08:00-09:00", "09:15-10:15", "10:25-11:25", "11:35-12:35", "12:45-13:15", "13:15-13:50",
     ],
     "solver_time_limit": 90,
     "solver_workers": 8,

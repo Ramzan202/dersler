@@ -3,7 +3,8 @@
 These data are only an example and can be edited completely from the user interface.
 """
 from app.database.database import Database
-from app.database.models import Curriculum, Room, SchoolClass, Subject, Teacher
+from app.database.models import Room, SchoolClass, Subject, Teacher
+from app.services import meb_catalog
 from app.services.class_service import ClassService
 from app.services.room_service import RoomService
 from app.services.subject_service import CurriculumService, SubjectService
@@ -51,83 +52,59 @@ SUBJECTS = [
     dict(name="Grafik ve Canlandırma", short_name="GRF", brans="Bilişim", default_hours=4, room_type=LAB,
          room_required=1, vocational=1),
     dict(name="İşletmelerde Mesleki Eğitim", short_name="İME", brans="Bilişim", default_hours=2, vocational=1),
-    dict(name="Elektrik-Elektronik Esasları", short_name="EEE", brans="Elektrik", default_hours=4, difficulty=1,
-         vocational=1),
-    dict(name="Temel Elektrik-Elektronik Atölyesi", short_name="TEA", brans="Elektrik", default_hours=4,
-         room_type=WORKSHOP, room_required=1, vocational=1),
+    dict(name="Temel Elektrik-Elektronik", short_name="TEE", brans="Elektrik", default_hours=8, difficulty=1,
+         room_type=WORKSHOP, room_required=1, vocational=1, min_block=2, max_block=4),
     dict(name="Teknik Resim", short_name="TRS", brans="Elektrik", default_hours=2, vocational=1),
+    dict(name="Seçmeli Dersler", short_name="SEÇ", default_hours=4, elective=1),
+    dict(name="Seçmeli Meslek Dersleri", short_name="SMD", brans="Bilişim", default_hours=4, elective=1,
+         vocational=1, min_block=2, max_block=4),
 ]
 
-COMMON_9 = [
-    ("Türk Dili ve Edebiyatı", 5), ("Din Kültürü ve Ahlak Bilgisi", 2), ("Tarih", 2), ("Coğrafya", 2),
-    ("Matematik", 5), ("Fizik", 2), ("Kimya", 2), ("Biyoloji", 2), ("Yabancı Dil", 4),
-    ("Beden Eğitimi ve Spor / Görsel Sanatlar / Müzik", 2), ("Mesleki Gelişim Atölyesi", 2),
+# Öğretim planları MEB çerçeve öğretim programlarından alınır (app/data/meb_cerceve_2026.json).
+MEB_PLANS = [
+    ("Bilişim Teknolojileri", "Anadolu Meslek Programı", "Yazılım Geliştirme", ["9", "10", "11", "12"]),
+    ("Elektrik-Elektronik Teknolojisi", "Anadolu Meslek Programı", "Elektrik Tesisatları ve Dağıtımı", ["9"]),
 ]
 
-CURRICULA = {
-    ("9. Sınıf Bilişim Teknolojileri", 9, "Bilişim Teknolojileri", ""): COMMON_9 + [
-        ("Programlama Temelleri", 4), ("Bilişim Teknolojilerinin Temelleri", 4),
-        ("Bilgisayarlı Tasarım Uygulamaları", 2), ("Rehberlik ve Yönlendirme", 1),
-    ],
-    ("9. Sınıf Elektrik-Elektronik (örnek)", 9, "Elektrik-Elektronik Teknolojisi", ""): COMMON_9 + [
-        ("Elektrik-Elektronik Esasları", 4), ("Temel Elektrik-Elektronik Atölyesi", 4), ("Teknik Resim", 2),
-        ("Rehberlik ve Yönlendirme", 1),
-    ],
-    ("10. Sınıf Bilişim Teknolojileri", 10, "Bilişim Teknolojileri", "Web Programcılığı"): [
-        ("Türk Dili ve Edebiyatı", 4), ("Din Kültürü ve Ahlak Bilgisi", 2), ("Tarih", 2), ("Coğrafya", 2),
-        ("Matematik", 5), ("Fizik", 2), ("Kimya", 2), ("Biyoloji", 2), ("Yabancı Dil", 2),
-        ("Beden Eğitimi ve Spor / Görsel Sanatlar / Müzik", 2), ("Nesne Tabanlı Programlama", 7),
-        ("Veri Tabanı Yönetimi", 3), ("Robotik ve Kodlama", 3), ("Rehberlik ve Yönlendirme", 1),
-    ],
-    ("11. Sınıf Web Programcılığı", 11, "Bilişim Teknolojileri", "Web Programcılığı"): [
-        ("Türk Dili ve Edebiyatı", 4), ("Din Kültürü ve Ahlak Bilgisi", 2), ("Felsefe", 2), ("Yabancı Dil", 2),
-        ("Beden Eğitimi ve Spor / Görsel Sanatlar / Müzik", 2), ("Web Tabanlı Uygulama Geliştirme", 9),
-        ("Mobil Uygulamalar", 4), ("Grafik ve Canlandırma", 4), ("Rehberlik ve Yönlendirme", 1),
-    ],
-    ("12. Sınıf Web Programcılığı", 12, "Bilişim Teknolojileri", "Web Programcılığı"): [
-        ("Türk Dili ve Edebiyatı", 4), ("Din Kültürü ve Ahlak Bilgisi", 2),
-        ("T.C. İnkılap Tarihi ve Atatürkçülük", 2), ("Yabancı Dil", 2), ("Sağlık Bilgisi ve Trafik Kültürü", 1),
-        ("İşletmelerde Mesleki Eğitim", 2), ("Rehberlik ve Yönlendirme", 1),
-    ],
-}
-
+SEC = "Seçmeli Dersler"
+SMD = "Seçmeli Meslek Dersleri"
+MGA = "Mesleki Gelişim Atölyesi"
 TEACHERS = [
-    ("Ayşe Yılmaz", "Türk Dili ve Edebiyatı", []),
-    ("Mehmet Öztürk", "Türk Dili ve Edebiyatı", []),
+    ("Ayşe Yılmaz", "Türk Dili ve Edebiyatı", [SEC]),
+    ("Mehmet Öztürk", "Türk Dili ve Edebiyatı", [SEC]),
     ("Fatma Çelik", "Din Kültürü", []),
-    ("Ali Şahin", "Tarih", []),
-    ("Zeynep Aydın", "Coğrafya", []),
-    ("Mustafa Kılıç", "Matematik", []),
-    ("Elif Doğan", "Matematik", []),
+    ("Ali Şahin", "Tarih", [SEC]),
+    ("Zeynep Aydın", "Coğrafya", [SEC]),
+    ("Mustafa Kılıç", "Matematik", [SEC]),
+    ("Elif Doğan", "Matematik", [SEC]),
     ("Hüseyin Arslan", "Fizik", []),
     ("Emine Koç", "Kimya", []),
     ("İbrahim Kurt", "Biyoloji", []),
-    ("Hatice Özdemir", "İngilizce", []),
-    ("Ömer Güneş", "İngilizce", []),
+    ("Hatice Özdemir", "İngilizce", [SEC]),
+    ("Ömer Güneş", "İngilizce", [SEC]),
     ("Gülşen Erdoğan", "Beden Eğitimi", []),
-    ("Murat Aksoy", "Felsefe", []),
+    ("Murat Aksoy", "Felsefe", [SEC]),
     ("Şule İnce", "Rehberlik", []),
-    ("Burak Yıldız", "Bilişim", ["Mesleki Gelişim Atölyesi"]),
-    ("Cansu Polat", "Bilişim", ["Mesleki Gelişim Atölyesi"]),
+    ("Burak Yıldız", "Bilişim", [MGA]),
+    ("Cansu Polat", "Bilişim", [MGA]),
     ("Deniz Uçar", "Bilişim", []),
     ("Görkem Taş", "Bilişim", []),
-    ("Erkan Bulut", "Elektrik", ["Mesleki Gelişim Atölyesi"]),
-    ("Özlem Çakır", "Elektrik", ["Mesleki Gelişim Atölyesi"]),
+    ("Emre Şen", "Bilişim", []),
+    ("Selin Avcı", "Bilişim", []),
+    ("Erkan Bulut", "Elektrik", [MGA]),
+    ("Özlem Çakır", "Elektrik", [MGA]),
 ]
 
+BT = ("Bilişim Teknolojileri", "Anadolu Meslek Programı", "Yazılım Geliştirme")
+EL = ("Elektrik-Elektronik Teknolojisi", "Anadolu Meslek Programı", "Elektrik Tesisatları ve Dağıtımı")
+ALL_DAYS = "0,1,2,3,4"
 CLASSES = [
-    ("AMP9A", 9, "Bilişim Teknolojileri", "", "9. Sınıf Bilişim Teknolojileri", "A101", "0,1,2,3,4"),
-    ("AMP9B", 9, "Bilişim Teknolojileri", "", "9. Sınıf Bilişim Teknolojileri", "A102", "0,1,2,3,4"),
-    ("AMP9C", 9, "Elektrik-Elektronik Teknolojisi", "", "9. Sınıf Elektrik-Elektronik (örnek)", "A103", "0,1,2,3,4"),
-    ("AMP9D", 9, "Elektrik-Elektronik Teknolojisi", "", "9. Sınıf Elektrik-Elektronik (örnek)", "A104", "0,1,2,3,4"),
-    ("AMP10A", 10, "Bilişim Teknolojileri", "Web Programcılığı", "10. Sınıf Bilişim Teknolojileri", "A105",
-     "0,1,2,3,4"),
-    ("AMP10B", 10, "Bilişim Teknolojileri", "Web Programcılığı", "10. Sınıf Bilişim Teknolojileri", "A106",
-     "0,1,2,3,4"),
-    ("AMP11A", 11, "Bilişim Teknolojileri", "Web Programcılığı", "11. Sınıf Web Programcılığı", "A107", "0,1,2,3,4"),
-    ("AMP11B", 11, "Bilişim Teknolojileri", "Web Programcılığı", "11. Sınıf Web Programcılığı", "A108", "0,1,2,3,4"),
-    ("AMP12A", 12, "Bilişim Teknolojileri", "Web Programcılığı", "12. Sınıf Web Programcılığı", "A109", "0,1"),
-    ("AMP12B", 12, "Bilişim Teknolojileri", "Web Programcılığı", "12. Sınıf Web Programcılığı", "A110", "0,1"),
+    ("AMP9A", 9, BT, "A101", ALL_DAYS), ("AMP9B", 9, BT, "A102", ALL_DAYS),
+    ("AMP9C", 9, EL, "A103", ALL_DAYS), ("AMP9D", 9, EL, "A104", ALL_DAYS),
+    ("AMP10A", 10, BT, "A105", ALL_DAYS), ("AMP10B", 10, BT, "A106", ALL_DAYS),
+    ("AMP11A", 11, BT, "A107", ALL_DAYS), ("AMP11B", 11, BT, "A108", ALL_DAYS),
+    # 12. sınıf: haftada 24 saat İşletmelerde Mesleki Eğitim, okulda yalnızca 3 gün
+    ("AMP12A", 12, BT, "A109", "0,1,2"), ("AMP12B", 12, BT, "A110", "0,1,2"),
 ]
 
 
@@ -151,13 +128,10 @@ def load_demo_data(db: Database, reset: bool = True):
         subjects[s.name] = s
 
     curricula = {}
-    for (name, grade, alan, dal), items in CURRICULA.items():
-        cur = cur_svc.save(Curriculum(name=name, grade=grade, alan=alan, dal=dal,
-                                      program_type="Anadolu Meslek Programı",
-                                      notes="MEB haftalık ders çizelgesine dayalı örnek plan"))
-        for subj_name, hours in items:
-            cur_svc.set_item(cur.id, subjects[subj_name].id, hours)
-        curricula[name] = cur
+    for alan, program, dal, grades in MEB_PLANS:
+        plan = meb_catalog.find(alan, program, dal)
+        for cur in meb_catalog.import_plan(db, plan, grades):
+            curricula[(alan, program, dal, str(cur.grade))] = cur
 
     rooms = {}
     for i in range(1, 11):
@@ -180,17 +154,18 @@ def load_demo_data(db: Database, reset: bool = True):
                     subject_ids=[subjects[s].id for s in extra])
         teachers[name] = teacher_svc.save(t)
 
-    for name, grade, alan, dal, cur_name, room_name, days in CLASSES:
-        class_svc.save(SchoolClass(name=name, grade=grade, alan=alan, dal=dal,
-                                   program_type="Anadolu Meslek Programı", curriculum_id=curricula[cur_name].id,
-                                   home_room_id=rooms[room_name].id, student_count=28, available_days=days))
+    for name, grade, (alan, program, dal), room_name, days in CLASSES:
+        cur = curricula[(alan, program, dal, str(grade))]
+        class_svc.save(SchoolClass(name=name, grade=grade, alan=alan, dal=dal, program_type=program,
+                                   curriculum_id=cur.id, home_room_id=rooms[room_name].id, student_count=28,
+                                   available_days=days))
 
     for cls_name, teacher in (("AMP9A", "Burak Yıldız"), ("AMP9B", "Cansu Polat"),
                               ("AMP9C", "Erkan Bulut"), ("AMP9D", "Özlem Çakır")):
         cls = class_svc.get_by_name(cls_name)
         class_svc.set_fixed_teacher(cls.id, subjects["Mesleki Gelişim Atölyesi"].id, teachers[teacher].id)
 
-    teacher_svc.set_unavailable(teachers["Hüseyin Arslan"].id, [(4, p) for p in range(9)])
-    teacher_svc.set_unavailable(teachers["Mustafa Kılıç"].id, [(0, 0), (0, 1), (2, 3)])
-    room_svc.set_unavailable(rooms["Spor Salonu"].id, [(2, p) for p in range(5, 9)])
-    room_svc.set_unavailable(rooms["BT Lab-3"].id, [(4, p) for p in range(6, 9)])
+    periods = int(db.get_setting("periods_per_day"))
+    teacher_svc.set_unavailable(teachers["Hüseyin Arslan"].id, [(4, p) for p in range(periods)])
+    teacher_svc.set_unavailable(teachers["Mustafa Kılıç"].id, [(0, 0), (0, 1)])
+    room_svc.set_unavailable(rooms["Spor Salonu"].id, [(2, periods - 1)])

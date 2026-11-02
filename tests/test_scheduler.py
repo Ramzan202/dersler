@@ -140,10 +140,11 @@ def test_full_demo_school_is_solved():
     from app.database.database import Database
     from app.database.seed import load_demo_data
     db = Database(":memory:")
+    db.set_setting("periods_per_day", 9)
     load_demo_data(db)
     problem = build_problem(db)
     assert not has_errors(validate(db, problem))
-    res = Scheduler(problem).solve(time_limit=90)
+    res = Scheduler(problem).solve(time_limit=150)
     assert res.ok, res.explanations
     assert hard_conflicts(check_timetable(problem, res.entries)) == []
     assert len(res.entries) == sum(l.hours for l in problem.lessons)

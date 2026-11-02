@@ -216,8 +216,8 @@ class SettingsPage(ctk.CTkScrollableFrame):
                 create_backup(self.app.db, "ornek_veri_oncesi")
             load_demo_data(self.app.db)
             self.app.data_changed()
-            show_info(self, "Örnek veriler yüklendi: 10 sınıf (AMP9A–AMP12B), 21 öğretmen, 16 derslik, MEB Bilişim "
-                            "Teknolojileri haftalık ders çizelgesi.")
+            show_info(self, "Örnek veriler yüklendi: 10 sınıf (AMP9A–AMP12B), 23 öğretmen, 16 derslik ve MEB çerçeve "
+                            "programlarından Bilişim Teknolojileri ile Elektrik-Elektronik haftalık ders çizelgeleri.")
 
     def wipe(self):
         if ask_yes_no(self, "TÜM veriler (sınıflar, öğretmenler, dersler, programlar) silinecek. Öncesinde yedek "

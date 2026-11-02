@@ -29,10 +29,31 @@ def test_demo_curricula_hours(db):
     load_demo_data(db)
     cur = CurriculumService(db)
     totals = {c.name: cur.total_hours(c.id) for c in cur.list()}
-    assert totals["9. Sınıf Bilişim Teknolojileri"] == 41
-    assert totals["10. Sınıf Bilişim Teknolojileri"] == 39
-    assert totals["11. Sınıf Web Programcılığı"] == 30
-    assert totals["12. Sınıf Web Programcılığı"] == 14
+    bt = "Bilişim Teknolojileri – Yazılım Geliştirme (AMP)"
+    assert totals[f"9. Sınıf {bt}"] == 45
+    assert totals[f"10. Sınıf {bt}"] == 45
+    assert totals[f"11. Sınıf {bt}"] == 45
+    assert totals[f"12. Sınıf {bt}"] == 20
+
+
+def test_meb_catalog_matches_pdf(db):
+    from app.services import meb_catalog
+    plans, kinds, meta = meb_catalog.load_catalog()
+    assert len(plans) > 300 and len(meb_catalog.alans()) >= 55
+    plan = meb_catalog.find("Bilişim Teknolojileri", "Anadolu Meslek Programı", "Yazılım Geliştirme")
+    nine = dict(plan.grades["9"])
+    assert nine["Türk Dili ve Edebiyatı"] == 5 and nine["Matematik"] == 5 and nine["Programlama Temelleri"] == 4
+    assert nine["Seçmeli Dersler"] == 4 and plan.hours("9") == 45
+    assert plan.ime == {"12": 24}
+    assert "İşletmelerde Mesleki Eğitim" not in dict(plan.grades["12"])
+    el = meb_catalog.dals("Elektrik-Elektronik Teknolojisi", "Anadolu Meslek Programı")
+    assert "Elektrik Tesisatları ve Dağıtımı" in el and len(el) >= 5
+    created = meb_catalog.import_plan(db, plan, ["9", "12"])
+    assert [c.grade for c in created] == [9, 12]
+    assert CurriculumService(db).total_hours(created[0].id) == 45
+    assert "24 saat" in created[1].notes
+    again = meb_catalog.import_plan(db, plan, ["9"])
+    assert again[0].id == created[0].id
 
 
 def test_class_extra_and_fixed_teacher(db):

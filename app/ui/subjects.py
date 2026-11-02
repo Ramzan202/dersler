@@ -135,7 +135,8 @@ class CurriculaPage(ctk.CTkFrame):
         left_bar = ctk.CTkFrame(body, fg_color="transparent")
         left_bar.grid(row=0, column=0, sticky="ew", pady=(0, 6))
         for text, cmd, color in (("➕ Plan", self.add_plan, None), ("✏️", self.edit_plan, None),
-                                 ("⧉ Kopyala", self.copy_plan, "#00695C"), ("🗑", self.delete_plan, "#C62828")):
+                                 ("⧉ Kopyala", self.copy_plan, "#00695C"), ("🗑", self.delete_plan, "#C62828"),
+                                 ("📥 MEB", self.import_meb, "#1565C0")):
             ctk.CTkButton(left_bar, text=text, command=g(cmd), width=70,
                           **({"fg_color": color} if color else {})).pack(side="left", padx=(0, 4))
         self.plans = DataTable(body, [("name", "Plan", 240), ("grade", "Düzey", 50), ("alan", "Alan", 160),
@@ -194,6 +195,11 @@ class CurriculaPage(ctk.CTkFrame):
         for k, v in vals.items():
             setattr(c, k, v)
         return self.svc.save(c)
+
+    def import_meb(self):
+        from app.ui.meb_import import MebImportDialog
+        MebImportDialog(self, self.app).show()
+        self.app.data_changed()
 
     def add_plan(self):
         if self._plan_form(Curriculum(), "Yeni öğretim planı"):
