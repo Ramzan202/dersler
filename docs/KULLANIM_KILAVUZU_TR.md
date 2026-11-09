@@ -196,6 +196,8 @@ Seçilen varyant için şunlar gösterilir:
 
 ## 4. Program nasıl hesaplar?
 
+Formüller ve şema ile ayrıntılı açıklama: [ALGORITMA_TR.md](ALGORITMA_TR.md).
+
 ### 4.1 Adımlar
 1. **Veri kontrolü.** Giriş verilerindeki hatalar aranır: planı olmayan sınıf, öğretmeni olmayan ders, boş saatten fazla ders, zamanı yetmeyen öğretmen gibi. Hata varsa hesaplama başlamaz.
 2. **Matematiksel model.** Her ders için "evet/hayır" değişkenleri tanımlanır: "L saatlik blok d günü p. derste başlar", "dersi t öğretmeni verir", "ders r dersliğindedir". Tüm kurallar bu değişkenler arasında eşitlik ve eşitsizlik olarak yazılır.

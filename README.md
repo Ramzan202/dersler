@@ -2,6 +2,8 @@
 
 📖 **Инструкция:** [на русском](docs/INSTRUKCIYA_RU.md) · **Kullanım kılavuzu:** [Türkçe](docs/KULLANIM_KILAVUZU_TR.md)
 
+🧮 **Как работает алгоритм:** [на русском](docs/ALGORITM_RU.md) · **Algoritma nasıl çalışır:** [Türkçe](docs/ALGORITMA_TR.md)
+
 Настольное приложение для автоматического составления школьного расписания профессионально‑технических анатолийских лицеев Турции (Mesleki ve Teknik Anadolu Lisesi). Интерфейс на турецком языке, все данные хранятся локально в SQLite, расписание строит оптимизатор Google OR‑Tools CP‑SAT.
 
 ## Запуск (Windows 10/11)
