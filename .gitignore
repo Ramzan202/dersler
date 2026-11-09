@@ -9,3 +9,4 @@ exports/*
 backups/*
 !backups/.gitkeep
 .req_hash
+data/*.log
